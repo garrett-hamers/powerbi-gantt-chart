@@ -1,0 +1,66 @@
+.ganttChart {
+    font-family: "Segoe UI", wf_segoe-ui_normal, helvetica, arial, sans-serif;
+
+    .chartContainer {
+        rect.gantt-bar {
+            transition: opacity 0.2s ease;
+            cursor: pointer;
+
+            &:hover {
+                opacity: 0.9 !important;
+            }
+
+            &:focus {
+                outline: 2px solid #0078d4;
+                outline-offset: 2px;
+            }
+        }
+
+        rect.gantt-progress {
+            pointer-events: none;
+        }
+
+        .data-label {
+            pointer-events: none;
+            cursor: default;
+        }
+
+        .today-line {
+            pointer-events: none;
+        }
+
+        .grid-line {
+            pointer-events: none;
+        }
+
+        .x-axis, .y-axis {
+            font-size: 10px;
+        }
+    }
+
+    &.landing {
+        rect:first-child {
+            cursor: default;
+            &:hover {
+                opacity: 1;
+            }
+        }
+    }
+}
+
+@media screen and (-ms-high-contrast: active) {
+    .ganttChart {
+        rect {
+            stroke: currentColor;
+            stroke-width: 1px;
+        }
+
+        line {
+            stroke: currentColor !important;
+        }
+
+        text {
+            fill: currentColor;
+        }
+    }
+}
