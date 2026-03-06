@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Gantt Chart Visual Test Harness</title>
+    <style>
+        body { margin: 0; padding: 20px; font-family: "Segoe UI", sans-serif; background: #fff; }
+        #visual-container { width: 900px; height: 500px; border: 1px solid #e0e0e0; overflow: hidden; display: flex; flex-direction: column; }
+        #header-svg { flex-shrink: 0; }
+        #scroll-body { flex: 1; overflow-y: auto; overflow-x: hidden; }
+        /* Gantt chart styles */
+        .ganttChart { font-family: "Segoe UI", sans-serif; }
+        .gantt-bar { transition: opacity 0.2s ease; cursor: pointer; }
+        .gantt-bar:hover { opacity: 0.9 !important; }
+        .gantt-progress { pointer-events: none; }
+        .data-label { pointer-events: none; }
+        .grid-line, .group-separator, .today-line { pointer-events: none; }
+    </style>
+</head>
+<body>
+    <div id="visual-container">
+        <svg id="header-svg" width="900" height="30"></svg>
+        <div id="scroll-body">
+            <svg id="chart-svg" width="900" height="470"></svg>
+        </div>
+    </div>
+    <script src="visual-harness-bundle.js"></script>
+</body>
+</html>

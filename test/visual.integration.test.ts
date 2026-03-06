@@ -131,9 +131,13 @@ describe("Gantt Visual integration", () => {
             progress: [100, 50, 0]
         });
         visual.update(makeUpdateOptions(dv, 800, 500));
-        const svg = element.querySelector("svg.ganttChart");
-        expect(svg?.getAttribute("width")).toBe("800");
-        expect(svg?.getAttribute("height")).toBe("500");
+        // Header SVG (pinned x-axis) + body SVG (scrollable bars)
+        const svgs = element.querySelectorAll("svg.ganttChart");
+        expect(svgs.length).toBeGreaterThanOrEqual(1);
+        const bodySvg = svgs[svgs.length - 1];
+        expect(bodySvg?.getAttribute("width")).toBe("800");
+        // Body height is viewport minus header; may expand for min row height
+        expect(Number(bodySvg?.getAttribute("height"))).toBeGreaterThan(0);
     });
 
     it("overlapping date ranges don't crash", () => {

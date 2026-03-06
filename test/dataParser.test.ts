@@ -186,4 +186,16 @@ describe("parseDataView", () => {
         expect(result.tasks).toHaveLength(1);
         expect(result.tasks[0].name).toBe("Solo");
     });
+
+    it("auto-swaps dates when start > end", () => {
+        const dv = buildMockDataView({
+            tasks: ["Swapped"],
+            startDates: ["2024-06-30"],
+            endDates: ["2024-01-15"]
+        });
+        const result = parseDataView(dv)!;
+        expect(result).not.toBeNull();
+        expect(result.tasks).toHaveLength(1);
+        expect(result.tasks[0].startDate.getTime()).toBeLessThan(result.tasks[0].endDate.getTime());
+    });
 });

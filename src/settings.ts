@@ -176,6 +176,36 @@ class DesignCard extends FormattingSettingsCard {
         value: { value: "#F44336" }
     });
 
+    categoryColor6 = new formattingSettings.ColorPicker({
+        name: "categoryColor6",
+        displayName: "Category Color 6",
+        value: { value: "#00BCD4" }
+    });
+
+    categoryColor7 = new formattingSettings.ColorPicker({
+        name: "categoryColor7",
+        displayName: "Category Color 7",
+        value: { value: "#795548" }
+    });
+
+    categoryColor8 = new formattingSettings.ColorPicker({
+        name: "categoryColor8",
+        displayName: "Category Color 8",
+        value: { value: "#607D8B" }
+    });
+
+    categoryColor9 = new formattingSettings.ColorPicker({
+        name: "categoryColor9",
+        displayName: "Category Color 9",
+        value: { value: "#E91E63" }
+    });
+
+    categoryColor10 = new formattingSettings.ColorPicker({
+        name: "categoryColor10",
+        displayName: "Category Color 10",
+        value: { value: "#009688" }
+    });
+
     progressColor = new formattingSettings.ColorPicker({
         name: "progressColor",
         displayName: "Progress Color",
@@ -202,6 +232,11 @@ class DesignCard extends FormattingSettingsCard {
         this.categoryColor3,
         this.categoryColor4,
         this.categoryColor5,
+        this.categoryColor6,
+        this.categoryColor7,
+        this.categoryColor8,
+        this.categoryColor9,
+        this.categoryColor10,
         this.progressColor,
         this.todayLineColor,
         this.barOpacity
@@ -240,11 +275,26 @@ class InteractionCard extends FormattingSettingsCard {
     ];
 }
 
+class LegendCard extends FormattingSettingsCard {
+    show = new formattingSettings.ToggleSwitch({
+        name: "show",
+        displayName: "Show Legend",
+        value: true
+    });
+
+    name: string = "legend";
+    displayName: string = "Legend";
+    slices: Array<FormattingSettingsSlice> = [
+        this.show
+    ];
+}
+
 export class VisualFormattingSettingsModel extends FormattingSettingsModel {
     chartSettingsCard = new ChartSettingsCard();
     titleCard = new TitleCard();
     dataLabelsCard = new DataLabelsCard();
     categoriesCard = new CategoriesCard();
+    legendCard = new LegendCard();
     designCard = new DesignCard();
     interactionCard = new InteractionCard();
 
@@ -253,6 +303,7 @@ export class VisualFormattingSettingsModel extends FormattingSettingsModel {
         this.titleCard,
         this.dataLabelsCard,
         this.categoriesCard,
+        this.legendCard,
         this.designCard,
         this.interactionCard
     ];

@@ -10,10 +10,13 @@
     "scripts": {
         "pbiviz": "pbiviz",
         "start": "pbiviz start",
-        "package": "pbiviz package",
+        "package": "pbiviz package && powershell -Command \"Get-ChildItem dist/*.pbiviz | Rename-Item -NewName atlynGanttChart.pbiviz -Force\"",
         "lint": "npx eslint .",
         "test": "vitest run",
-        "test:watch": "vitest"
+        "test:watch": "vitest",
+        "test:visual:build": "npx esbuild test/visual-harness-entry.ts --bundle --outfile=test/visual-harness-bundle.js --format=iife --target=es2020",
+        "test:visual": "npm run test:visual:build && npx playwright test --config=playwright.config.ts",
+        "test:visual:update": "npm run test:visual:build && npx playwright test --config=playwright.config.ts --update-snapshots"
     },
     "dependencies": {
         "d3": "^7.9.0",
@@ -22,12 +25,16 @@
         "powerbi-visuals-utils-formattingmodel": "6.0.4"
     },
     "devDependencies": {
+        "@playwright/test": "^1.58.2",
         "@types/d3": "^7.4.3",
         "@typescript-eslint/eslint-plugin": "^8.8.0",
+        "esbuild": "^0.27.3",
         "eslint": "^9.11.1",
         "eslint-plugin-powerbi-visuals": "^1.0.0",
         "happy-dom": "^20.5.0",
+        "http-server": "^14.1.1",
         "less": "^4.5.1",
+        "playwright": "^1.58.2",
         "powerbi-visuals-utils-testutils": "^6.1.1",
         "typescript": "5.5.4",
         "vitest": "^4.0.18"

@@ -138,6 +138,21 @@
                 "categoryColor5": {
                     "type": { "fill": { "solid": { "color": true } } }
                 },
+                "categoryColor6": {
+                    "type": { "fill": { "solid": { "color": true } } }
+                },
+                "categoryColor7": {
+                    "type": { "fill": { "solid": { "color": true } } }
+                },
+                "categoryColor8": {
+                    "type": { "fill": { "solid": { "color": true } } }
+                },
+                "categoryColor9": {
+                    "type": { "fill": { "solid": { "color": true } } }
+                },
+                "categoryColor10": {
+                    "type": { "fill": { "solid": { "color": true } } }
+                },
                 "progressColor": {
                     "type": { "fill": { "solid": { "color": true } } }
                 },
@@ -164,6 +179,13 @@
                             { "value": "filter", "displayName": "Filter" }
                         ]
                     }
+                }
+            }
+        },
+        "legend": {
+            "properties": {
+                "show": {
+                    "type": { "bool": true }
                 }
             }
         }

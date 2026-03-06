@@ -20,6 +20,7 @@ function defaultSettings(overrides: Partial<GanttSettings> = {}): GanttSettings 
         title: { show: false, text: "", fontSize: 16, fontColor: "#333", alignment: "left" },
         dataLabels: { show: true, fontSize: 11, showProgress: true },
         categories: { show: true, fontSize: 11, fontColor: "#333" },
+        legend: { show: false },
         ...overrides
     };
 }
@@ -72,11 +73,11 @@ describe("Gantt chart rendering", () => {
         expect(bars).toBe(4);
     });
 
-    it("renders progress overlay bars for tasks with progress > 0", () => {
+    it("renders progress overlay bars for tasks with progress > 0 and < 100", () => {
         new GanttChart(container, sampleData(), defaultSettings(), defaultDimensions()).render();
         const progressBars = container.selectAll("rect.gantt-progress").size();
-        // Design=100%, Development=75%, Testing=30%; Deployment=0% (excluded)
-        expect(progressBars).toBe(3);
+        // Development=75%, Testing=30%; Design=100% (skipped), Deployment=0% (excluded)
+        expect(progressBars).toBe(2);
     });
 
     it("bars have data-dp-index attributes", () => {

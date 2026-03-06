@@ -100,6 +100,9 @@ export function parseDataView(dataView: DataView): ParsedData | null {
         if (!startDate || !endDate) continue;
         if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) continue;
 
+        // Auto-swap if dates are reversed
+        const [actualStart, actualEnd] = startDate > endDate ? [endDate, startDate] : [startDate, endDate];
+
         // Clamp progress to 0-100
         let progress = 0;
         if (progressValues.length > i && progressValues[i] != null) {
@@ -120,16 +123,16 @@ export function parseDataView(dataView: DataView): ParsedData | null {
 
         tasks.push({
             name: taskName,
-            startDate,
-            endDate,
+            startDate: actualStart,
+            endDate: actualEnd,
             progress,
             category,
             tooltipFields,
             rowIndex: i
         });
 
-        if (!minDate || startDate < minDate) minDate = startDate;
-        if (!maxDate || endDate > maxDate) maxDate = endDate;
+        if (!minDate || actualStart < minDate) minDate = actualStart;
+        if (!maxDate || actualEnd > maxDate) maxDate = actualEnd;
     }
 
     if (tasks.length === 0 || !minDate || !maxDate) {

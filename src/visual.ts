@@ -26,6 +26,9 @@ import { BasicFilter } from "powerbi-models";
 
 export class Visual implements IVisual {
     private target: HTMLElement;
+    private headerSvg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
+    private headerContainer: d3.Selection<SVGGElement, unknown, null, undefined>;
+    private scrollBody: HTMLDivElement;
     private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
     private chartContainer: d3.Selection<SVGGElement, unknown, null, undefined>;
     private formattingSettings: VisualFormattingSettingsModel;
@@ -45,6 +48,10 @@ export class Visual implements IVisual {
         this.target = options.element;
         this.host = options.host;
 
+        this.target.style.overflow = "hidden";
+        this.target.style.display = "flex";
+        this.target.style.flexDirection = "column";
+
         this.selectionManager = this.host.createSelectionManager();
         this.tooltipService = this.host.tooltipService;
 
@@ -52,7 +59,22 @@ export class Visual implements IVisual {
             this.syncSelectionState(ids);
         });
 
-        this.svg = d3.select(this.target)
+        // Fixed header SVG for x-axis
+        this.headerSvg = d3.select(this.target)
+            .append("svg")
+            .classed("ganttChart ganttHeader", true)
+            .style("flex-shrink", "0");
+        this.headerContainer = this.headerSvg.append("g")
+            .classed("headerContainer", true);
+
+        // Scrollable body div
+        this.scrollBody = document.createElement("div");
+        this.scrollBody.style.flex = "1";
+        this.scrollBody.style.overflowY = "auto";
+        this.scrollBody.style.overflowX = "hidden";
+        this.target.appendChild(this.scrollBody);
+
+        this.svg = d3.select(this.scrollBody)
             .append("svg")
             .classed("ganttChart", true);
 
@@ -74,10 +96,12 @@ export class Visual implements IVisual {
         try {
             this.chartContainer.selectAll("*").remove();
             this.chartContainer.attr("transform", null);
+            this.headerContainer.selectAll("*").remove();
             this.selectionIds = [];
 
             this.dataView = options.dataViews?.[0];
             if (!this.dataView) {
+                this.headerSvg.attr("height", 0);
                 this.renderLandingPage();
                 this.host.eventService?.renderingFinished(options);
                 return;
@@ -91,11 +115,14 @@ export class Visual implements IVisual {
             const width = Math.min(options.viewport.width, this.target.clientWidth) || options.viewport.width;
             const height = Math.min(options.viewport.height, this.target.clientHeight) || options.viewport.height;
 
-            this.svg.attr("width", width).attr("height", height);
+            const headerHeight = 30;
+            this.headerSvg.attr("width", width).attr("height", headerHeight);
+            this.svg.attr("width", width).attr("height", height - headerHeight);
 
             this.parsedData = parseDataView(this.dataView);
 
             if (!this.parsedData || this.parsedData.tasks.length === 0) {
+                this.headerSvg.attr("height", 0);
                 this.renderLandingPage();
                 this.host.eventService?.renderingFinished(options);
                 return;
@@ -109,7 +136,12 @@ export class Visual implements IVisual {
                 design.categoryColor2.value.value,
                 design.categoryColor3.value.value,
                 design.categoryColor4.value.value,
-                design.categoryColor5.value.value
+                design.categoryColor5.value.value,
+                design.categoryColor6.value.value,
+                design.categoryColor7.value.value,
+                design.categoryColor8.value.value,
+                design.categoryColor9.value.value,
+                design.categoryColor10.value.value
             ];
 
             const settings: GanttSettings = {
@@ -137,16 +169,30 @@ export class Visual implements IVisual {
                     show: this.formattingSettings.categoriesCard.show.value,
                     fontSize: this.formattingSettings.categoriesCard.fontSize.value,
                     fontColor: this.formattingSettings.categoriesCard.fontColor.value.value
+                },
+                legend: {
+                    show: this.formattingSettings.legendCard.show.value
                 }
             };
 
+            // Compute left margin based on longest y-axis label
+            const longestName = this.parsedData.tasks.reduce((max, t) => t.name.length > max.length ? t.name : max, "");
+            const estimatedLabelWidth = Math.min(longestName.length * 7 + 16, width * 0.35);
+            const leftMargin = Math.max(120, estimatedLabelWidth);
+
+            const bodyHeight = height - headerHeight;
             const dimensions: GanttDimensions = {
-                width, height,
-                margin: { top: 10, right: 30, bottom: 30, left: 120 }
+                width, height: bodyHeight,
+                margin: { top: 10, right: 30, bottom: 0, left: leftMargin }
             };
 
-            const chart = new GanttChart(this.chartContainer, this.parsedData, settings, dimensions);
+            const chart = new GanttChart(this.chartContainer, this.parsedData, settings, dimensions, this.headerContainer);
             chart.render();
+
+            // Expand body SVG if content exceeds viewport
+            if (chart.requiredHeight > bodyHeight) {
+                this.svg.attr("height", chart.requiredHeight);
+            }
 
             this.addInteractivity();
 
