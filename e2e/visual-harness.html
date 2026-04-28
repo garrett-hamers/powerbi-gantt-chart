@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Gantt Chart — Preview</title>
+<style>
+  body { margin: 0; padding: 20px; background: #fff; font-family: "Segoe UI", sans-serif; }
+  .stack { display: flex; flex-direction: column; gap: 20px; }
+  .cell { border: 1px solid #e0e0e0; border-radius: 8px; padding: 8px; background: #fafafa; }
+  svg.ganttChart { display: block; }
+</style>
+</head>
+<body>
+<div class="stack">
+  <div class="cell"><div id="standard"></div></div>
+  <div class="cell"><div id="multiTeam"></div></div>
+  <div class="cell"><div id="manyRows"></div></div>
+</div>
+<script src="./visual-harness-bundle.js"></script>
+</body>
+</html>

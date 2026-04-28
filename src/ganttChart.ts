@@ -34,6 +34,12 @@ export interface GanttSettings {
     legend: {
         show: boolean;
     };
+    gridLineColor?: string;
+    separatorLineColor?: string;
+    axisColor?: string;
+    legendTextColor?: string;
+    isHighContrast?: boolean;
+    highContrastBackgroundColor?: string;
 }
 
 export interface GanttDimensions {
@@ -119,6 +125,11 @@ export class GanttChart {
             .range([chartTop, chartTop + effectiveHeight])
             .padding(0.2);
 
+        const gridLineColor = this.settings.gridLineColor ?? "#e0e0e0";
+        const separatorLineColor = this.settings.separatorLineColor ?? gridLineColor;
+        const axisColor = this.settings.axisColor ?? this.settings.categories.fontColor;
+        const legendTextColor = this.settings.legendTextColor ?? "#666";
+
         // Group separator lines between different task names
         for (let i = 1; i < this.data.tasks.length; i++) {
             if (this.data.tasks[i].name !== this.data.tasks[i - 1].name) {
@@ -129,7 +140,7 @@ export class GanttChart {
                     .attr("x2", this.chartWidth)
                     .attr("y1", y)
                     .attr("y2", y)
-                    .attr("stroke", "#e0e0e0")
+                    .attr("stroke", separatorLineColor)
                     .attr("stroke-width", 1);
             }
         }
@@ -146,7 +157,7 @@ export class GanttChart {
                 .attr("x2", (d: Date) => xScale(d))
                 .attr("y1", chartTop)
                 .attr("y2", chartTop + effectiveHeight)
-                .attr("stroke", "#e0e0e0")
+                .attr("stroke", gridLineColor)
                 .attr("stroke-width", 1)
                 .attr("stroke-dasharray", "2,2");
         }
@@ -155,16 +166,18 @@ export class GanttChart {
         const xAxisTarget = this.headerContainer || this.container;
         if (this.headerContainer) {
             const xAxisTop = d3.axisTop(xScale).ticks(6);
-            xAxisTarget.append("g")
+            const axisGroup = xAxisTarget.append("g")
                 .attr("class", "x-axis")
                 .attr("transform", `translate(${margin.left},28)`)
                 .call(xAxisTop as any);
+            this.styleAxis(axisGroup, axisColor);
         } else {
             const xAxisBottom = d3.axisBottom(xScale).ticks(6);
-            xAxisTarget.append("g")
+            const axisGroup = xAxisTarget.append("g")
                 .attr("class", "x-axis")
                 .attr("transform", `translate(0,${chartTop + effectiveHeight})`)
                 .call(xAxisBottom as any);
+            this.styleAxis(axisGroup, axisColor);
         }
 
         // Y axis labels — deduplicated, then deoverlapped
@@ -217,6 +230,13 @@ export class GanttChart {
             return getCategoryColor(0, this.settings.categoryColors);
         };
 
+        const getLabelColor = (d: GanttTask): string => {
+            if (this.settings.isHighContrast) {
+                return this.settings.highContrastBackgroundColor ?? "#000000";
+            }
+            return getContrastTextColor(getBarColor(d));
+        };
+
         this.container.selectAll("rect.gantt-bar")
             .data(this.data.tasks)
             .enter()
@@ -232,7 +252,12 @@ export class GanttChart {
             .attr("height", barHeight)
             .attr("rx", this.settings.barCornerRadius)
             .attr("fill", (d: GanttTask) => getBarColor(d))
-            .attr("opacity", this.settings.barOpacity / 100);
+            .attr("opacity", this.settings.barOpacity / 100)
+            .attr("role", "button")
+            .attr("tabindex", 0)
+            .attr("focusable", "true")
+            .attr("aria-label", (d: GanttTask) => this.buildAriaLabel(d))
+            .attr("aria-pressed", "false");
 
         // Progress overlay — uses darker shade of the bar's own color
         this.container.selectAll("rect.gantt-progress")
@@ -252,9 +277,13 @@ export class GanttChart {
                 return fullWidth * (d.progress / 100);
             })
             .attr("height", barHeight)
-            .attr("fill", (d: GanttTask) => darkenColor(getBarColor(d), 0.3))
+            .attr("fill", (d: GanttTask) => this.settings.isHighContrast
+                ? this.settings.progressColor
+                : darkenColor(getBarColor(d), 0.3))
             .attr("opacity", this.settings.barOpacity / 100)
-            .attr("pointer-events", "none");
+            .attr("pointer-events", "none")
+            .attr("aria-hidden", "true")
+            .attr("focusable", "false");
 
         // Data labels — adaptive text color based on bar luminance
         if (this.settings.dataLabels.show) {
@@ -284,7 +313,7 @@ export class GanttChart {
                 })
                 .attr("dy", "0.35em")
                 .attr("font-size", `${this.settings.dataLabels.fontSize}px`)
-                .attr("fill", (d: GanttTask) => getContrastTextColor(getBarColor(d)))
+                .attr("fill", (d: GanttTask) => getLabelColor(d))
                 .text((d: GanttTask) => {
                     const label = d.category || d.name;
                     if (this.settings.dataLabels.showProgress && d.progress > 0) {
@@ -340,6 +369,7 @@ export class GanttChart {
     private renderLegend(y: number): void {
         const categoryMap = new Map<string, number>();
         this.data.categories.forEach((cat, i) => categoryMap.set(cat, i));
+        const legendTextColor = this.settings.legendTextColor ?? "#666";
 
         const legendGroup = this.container.append("g")
             .attr("class", "legend")
@@ -356,9 +386,27 @@ export class GanttChart {
             legendGroup.append("text")
                 .attr("x", xOffset + 14).attr("y", 9)
                 .attr("font-size", "10px")
-                .attr("fill", "#666")
+                .attr("fill", legendTextColor)
                 .text(cat);
             xOffset += cat.length * 6 + 28;
         });
+    }
+
+    private buildAriaLabel(task: GanttTask): string {
+        const parts = [
+            `Task ${task.name}`,
+            `Start ${task.startDate.toLocaleDateString()}`,
+            `End ${task.endDate.toLocaleDateString()}`,
+            `Progress ${Math.round(task.progress)} percent`
+        ];
+        if (task.category) {
+            parts.push(`Category ${task.category}`);
+        }
+        return parts.join(", ");
+    }
+
+    private styleAxis(axisGroup: d3.Selection<SVGGElement, unknown, null, undefined>, color: string): void {
+        axisGroup.selectAll("path,line").attr("stroke", color);
+        axisGroup.selectAll("text").attr("fill", color);
     }
 }

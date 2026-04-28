@@ -1,0 +1,321 @@
+{
+  "visualName": "atlynGanttChart",
+  "apiVersion": "5.3.0",
+  "dataRoles": [
+    {
+      "name": "task",
+      "displayName": "Task",
+      "kind": "Grouping"
+    },
+    {
+      "name": "startDate",
+      "displayName": "Start Date",
+      "kind": "Measure"
+    },
+    {
+      "name": "endDate",
+      "displayName": "End Date",
+      "kind": "Measure"
+    },
+    {
+      "name": "progress",
+      "displayName": "Progress",
+      "kind": "Measure"
+    },
+    {
+      "name": "category",
+      "displayName": "Category",
+      "kind": "Grouping"
+    },
+    {
+      "name": "tooltips",
+      "displayName": "Tooltips",
+      "kind": "Measure"
+    }
+  ],
+  "conditions": [
+    {
+      "task": {
+        "max": 1
+      },
+      "startDate": {
+        "max": 1
+      },
+      "endDate": {
+        "max": 1
+      },
+      "progress": {
+        "max": 1
+      },
+      "category": {
+        "max": 1
+      }
+    }
+  ],
+  "supports": {
+    "highlight": true,
+    "keyboardFocus": true,
+    "tooltipsDefault": true,
+    "tooltipsCanvas": true
+  },
+  "properties": [
+    {
+      "objectName": "general",
+      "propertyName": "filter",
+      "type": "filter",
+      "isFilter": true,
+      "defaultValue": null
+    },
+    {
+      "objectName": "chartSettings",
+      "propertyName": "showTodayLine",
+      "type": "bool",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "chartSettings",
+      "propertyName": "showGridLines",
+      "type": "bool",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "chartSettings",
+      "propertyName": "barHeight",
+      "type": "numeric",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "chartSettings",
+      "propertyName": "barCornerRadius",
+      "type": "numeric",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "title",
+      "propertyName": "show",
+      "type": "bool",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "title",
+      "propertyName": "titleText",
+      "type": "text",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "title",
+      "propertyName": "fontSize",
+      "type": "numeric",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "title",
+      "propertyName": "fontColor",
+      "type": "color",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "title",
+      "propertyName": "alignment",
+      "type": "enumeration",
+      "isFilter": false,
+      "defaultValue": null,
+      "enumValues": [
+        {
+          "value": "left",
+          "displayName": "Left"
+        },
+        {
+          "value": "center",
+          "displayName": "Center"
+        },
+        {
+          "value": "right",
+          "displayName": "Right"
+        }
+      ]
+    },
+    {
+      "objectName": "dataLabels",
+      "propertyName": "show",
+      "type": "bool",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "dataLabels",
+      "propertyName": "fontSize",
+      "type": "numeric",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "dataLabels",
+      "propertyName": "showProgress",
+      "type": "bool",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "categories",
+      "propertyName": "show",
+      "type": "bool",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "categories",
+      "propertyName": "fontSize",
+      "type": "numeric",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "categories",
+      "propertyName": "fontColor",
+      "type": "color",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "design",
+      "propertyName": "categoryColor1",
+      "type": "color",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "design",
+      "propertyName": "categoryColor2",
+      "type": "color",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "design",
+      "propertyName": "categoryColor3",
+      "type": "color",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "design",
+      "propertyName": "categoryColor4",
+      "type": "color",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "design",
+      "propertyName": "categoryColor5",
+      "type": "color",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "design",
+      "propertyName": "categoryColor6",
+      "type": "color",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "design",
+      "propertyName": "categoryColor7",
+      "type": "color",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "design",
+      "propertyName": "categoryColor8",
+      "type": "color",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "design",
+      "propertyName": "categoryColor9",
+      "type": "color",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "design",
+      "propertyName": "categoryColor10",
+      "type": "color",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "design",
+      "propertyName": "progressColor",
+      "type": "color",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "design",
+      "propertyName": "todayLineColor",
+      "type": "color",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "design",
+      "propertyName": "barOpacity",
+      "type": "numeric",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "interaction",
+      "propertyName": "enableSelection",
+      "type": "bool",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "interaction",
+      "propertyName": "enableTooltips",
+      "type": "bool",
+      "isFilter": false,
+      "defaultValue": null
+    },
+    {
+      "objectName": "interaction",
+      "propertyName": "crossFilterMode",
+      "type": "enumeration",
+      "isFilter": false,
+      "defaultValue": null,
+      "enumValues": [
+        {
+          "value": "highlight",
+          "displayName": "Highlight"
+        },
+        {
+          "value": "filter",
+          "displayName": "Filter"
+        }
+      ]
+    },
+    {
+      "objectName": "legend",
+      "propertyName": "show",
+      "type": "bool",
+      "isFilter": false,
+      "defaultValue": null
+    }
+  ],
+  "propertyCount": 33,
+  "warnings": [],
+  "generatedAt": "2026-04-28T23:17:25.395Z"
+}

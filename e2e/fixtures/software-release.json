@@ -1,0 +1,178 @@
+{
+  "metadata": {
+    "columns": [
+      {
+        "displayName": "Task",
+        "queryName": "Table.Task",
+        "type": {
+          "text": true
+        },
+        "roles": {
+          "task": true
+        }
+      },
+      {
+        "displayName": "Phase",
+        "queryName": "Table.Phase",
+        "type": {
+          "text": true
+        },
+        "roles": {
+          "category": true
+        }
+      },
+      {
+        "displayName": "Start Date",
+        "queryName": "Sum(StartDate)",
+        "type": {
+          "numeric": true
+        },
+        "roles": {
+          "startDate": true
+        },
+        "isMeasure": true
+      },
+      {
+        "displayName": "End Date",
+        "queryName": "Sum(EndDate)",
+        "type": {
+          "numeric": true
+        },
+        "roles": {
+          "endDate": true
+        },
+        "isMeasure": true
+      },
+      {
+        "displayName": "Progress",
+        "queryName": "Sum(Progress)",
+        "type": {
+          "numeric": true
+        },
+        "roles": {
+          "progress": true
+        },
+        "isMeasure": true
+      }
+    ]
+  },
+  "categorical": {
+    "categories": [
+      {
+        "source": {
+          "displayName": "Task",
+          "queryName": "Table.Task",
+          "type": {
+            "text": true
+          },
+          "roles": {
+            "task": true
+          }
+        },
+        "values": [
+          "Kickoff",
+          "Design",
+          "Backend Dev",
+          "Frontend Dev",
+          "Integration",
+          "QA",
+          "UAT",
+          "Launch"
+        ]
+      },
+      {
+        "source": {
+          "displayName": "Phase",
+          "queryName": "Table.Phase",
+          "type": {
+            "text": true
+          },
+          "roles": {
+            "category": true
+          }
+        },
+        "values": [
+          "Planning",
+          "Planning",
+          "Development",
+          "Development",
+          "Development",
+          "Testing",
+          "Testing",
+          "Deployment"
+        ]
+      }
+    ],
+    "values": [
+      {
+        "source": {
+          "displayName": "Start Date",
+          "queryName": "Sum(StartDate)",
+          "type": {
+            "numeric": true
+          },
+          "roles": {
+            "startDate": true
+          },
+          "isMeasure": true
+        },
+        "values": [
+          "2026-01-05T00:00:00.000Z",
+          "2026-01-12T00:00:00.000Z",
+          "2026-02-02T00:00:00.000Z",
+          "2026-02-09T00:00:00.000Z",
+          "2026-03-16T00:00:00.000Z",
+          "2026-04-06T00:00:00.000Z",
+          "2026-04-27T00:00:00.000Z",
+          "2026-05-11T00:00:00.000Z"
+        ]
+      },
+      {
+        "source": {
+          "displayName": "End Date",
+          "queryName": "Sum(EndDate)",
+          "type": {
+            "numeric": true
+          },
+          "roles": {
+            "endDate": true
+          },
+          "isMeasure": true
+        },
+        "values": [
+          "2026-01-09T00:00:00.000Z",
+          "2026-01-30T00:00:00.000Z",
+          "2026-03-13T00:00:00.000Z",
+          "2026-03-20T00:00:00.000Z",
+          "2026-04-03T00:00:00.000Z",
+          "2026-04-24T00:00:00.000Z",
+          "2026-05-08T00:00:00.000Z",
+          "2026-05-15T00:00:00.000Z"
+        ]
+      },
+      {
+        "source": {
+          "displayName": "Progress",
+          "queryName": "Sum(Progress)",
+          "type": {
+            "numeric": true
+          },
+          "roles": {
+            "progress": true
+          },
+          "isMeasure": true
+        },
+        "values": [
+          100,
+          100,
+          75,
+          60,
+          20,
+          5,
+          0,
+          0
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,158 @@
+{
+  "metadata": {
+    "columns": [
+      {
+        "displayName": "Task",
+        "queryName": "Table.Task",
+        "type": {
+          "text": true
+        },
+        "roles": {
+          "task": true
+        }
+      },
+      {
+        "displayName": "Phase",
+        "queryName": "Table.Phase",
+        "type": {
+          "text": true
+        },
+        "roles": {
+          "category": true
+        }
+      },
+      {
+        "displayName": "Start Date",
+        "queryName": "Sum(StartDate)",
+        "type": {
+          "numeric": true
+        },
+        "roles": {
+          "startDate": true
+        },
+        "isMeasure": true
+      },
+      {
+        "displayName": "End Date",
+        "queryName": "Sum(EndDate)",
+        "type": {
+          "numeric": true
+        },
+        "roles": {
+          "endDate": true
+        },
+        "isMeasure": true
+      },
+      {
+        "displayName": "Progress",
+        "queryName": "Sum(Progress)",
+        "type": {
+          "numeric": true
+        },
+        "roles": {
+          "progress": true
+        },
+        "isMeasure": true
+      }
+    ]
+  },
+  "categorical": {
+    "categories": [
+      {
+        "source": {
+          "displayName": "Task",
+          "queryName": "Table.Task",
+          "type": {
+            "text": true
+          },
+          "roles": {
+            "task": true
+          }
+        },
+        "values": [
+          "Past Milestone",
+          "In Progress Sprint",
+          "Upcoming Release",
+          "Long-Running Migration"
+        ]
+      },
+      {
+        "source": {
+          "displayName": "Phase",
+          "queryName": "Table.Phase",
+          "type": {
+            "text": true
+          },
+          "roles": {
+            "category": true
+          }
+        },
+        "values": [
+          "Done",
+          "Active",
+          "Planned",
+          "Active"
+        ]
+      }
+    ],
+    "values": [
+      {
+        "source": {
+          "displayName": "Start Date",
+          "queryName": "Sum(StartDate)",
+          "type": {
+            "numeric": true
+          },
+          "roles": {
+            "startDate": true
+          },
+          "isMeasure": true
+        },
+        "values": [
+          "2026-01-10T00:00:00.000Z",
+          "2026-03-01T00:00:00.000Z",
+          "2026-05-01T00:00:00.000Z",
+          "2026-02-01T00:00:00.000Z"
+        ]
+      },
+      {
+        "source": {
+          "displayName": "End Date",
+          "queryName": "Sum(EndDate)",
+          "type": {
+            "numeric": true
+          },
+          "roles": {
+            "endDate": true
+          },
+          "isMeasure": true
+        },
+        "values": [
+          "2026-02-28T00:00:00.000Z",
+          "2026-04-15T00:00:00.000Z",
+          "2026-06-30T00:00:00.000Z",
+          "2026-06-15T00:00:00.000Z"
+        ]
+      },
+      {
+        "source": {
+          "displayName": "Progress",
+          "queryName": "Sum(Progress)",
+          "type": {
+            "numeric": true
+          },
+          "roles": {
+            "progress": true
+          },
+          "isMeasure": true
+        },
+        "values": [
+          100,
+          55,
+          0,
+          35
+        ]
+      }
+    ]
+  }
+}

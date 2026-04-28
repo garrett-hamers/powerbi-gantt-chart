@@ -92,6 +92,7 @@ describe("parseDataView", () => {
         });
         const result = parseDataView(dv)!;
         expect(result.tasks).toHaveLength(1);
+        expect(result.invalidDateRows).toBe(1);
     });
 
     it("parses categories correctly", () => {
@@ -174,6 +175,21 @@ describe("parseDataView", () => {
         });
         const result = parseDataView(dv)!;
         expect(result.tasks.map(t => t.rowIndex)).toEqual([0, 1, 2]);
+    });
+
+    it("captures cross-highlight state and highlighted progress", () => {
+        const dv = buildMockDataView({
+            tasks: ["A", "B"],
+            startDates: ["2024-01-01", "2024-02-01"],
+            endDates: ["2024-01-31", "2024-02-28"],
+            progress: [80, 60]
+        });
+        (dv.categorical.values[2] as any).highlights = [25, null];
+        const result = parseDataView(dv)!;
+        expect(result.hasHighlights).toBe(true);
+        expect(result.tasks[0].isHighlighted).toBe(true);
+        expect(result.tasks[0].highlightProgress).toBe(25);
+        expect(result.tasks[1].isHighlighted).toBe(false);
     });
 
     it("handles single task", () => {
