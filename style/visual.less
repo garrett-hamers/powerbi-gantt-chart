@@ -10,7 +10,13 @@
 
 .ganttChart {
     display: block;
+    forced-color-adjust: none;
+    -ms-high-contrast-adjust: none;
     font-family: "Segoe UI", wf_segoe-ui_normal, helvetica, arial, sans-serif;
+
+    &.filter-clearable {
+        cursor: pointer;
+    }
 
     .chartContainer {
         .gantt-data-point {
@@ -26,7 +32,7 @@
 
             &:focus {
                 outline: none;
-                stroke: #0078d4;
+                stroke: var(--gantt-focus-color, #0078d4);
                 stroke-width: 2px;
             }
         }
@@ -59,44 +65,6 @@
             &:hover {
                 opacity: 1;
             }
-        }
-    }
-}
-
-@media screen and (-ms-high-contrast: active) {
-    .ganttChart {
-        .gantt-data-point {
-            stroke: currentColor;
-            stroke-width: 2px;
-        }
-
-        line {
-            stroke: currentColor !important;
-        }
-
-        .data-label {
-            -ms-high-contrast-adjust: none;
-        }
-    }
-}
-
-@media (forced-colors: active) {
-    .ganttChart {
-        .gantt-data-point {
-            stroke: CanvasText;
-            stroke-width: 2px;
-
-            &:focus {
-                stroke: Highlight;
-            }
-        }
-
-        line, path.domain {
-            stroke: CanvasText !important;
-        }
-
-        .data-label {
-            forced-color-adjust: none;
         }
     }
 }

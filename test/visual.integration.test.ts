@@ -42,6 +42,9 @@ function createMockHost(options: {
     highContrast?: boolean;
     getColorError?: Error;
     allowInteractions?: boolean;
+    foreground?: string;
+    background?: string;
+    foregroundSelected?: string;
 } = {}): HostHarness {
     const selected: SelectionId[] = [];
     let selectionCallback: (selectionIds: HostSelectionId[]) => void = () => undefined;
@@ -77,11 +80,11 @@ function createMockHost(options: {
     const color = (value: string): powerbi.IColorInfo => ({ value });
     const palette = {
         isHighContrast: options.highContrast ?? false,
-        foreground: color(options.highContrast ? "#ffffff" : "#333333"),
+        foreground: color(options.foreground || (options.highContrast ? "#ffffff" : "#333333")),
         foregroundNeutralLight: color("#e0e0e0"),
         foregroundNeutralSecondary: color("#666666"),
-        foregroundSelected: color("#ffff00"),
-        background: color(options.highContrast ? "#000000" : "#ffffff"),
+        foregroundSelected: color(options.foregroundSelected || "#ffff00"),
+        background: color(options.background || (options.highContrast ? "#000000" : "#ffffff")),
         getColor: vi.fn((key: string) => {
             if (options.getColorError) {
                 throw options.getColorError;
@@ -386,6 +389,27 @@ describe("Gantt Visual integration", () => {
         expect((tooltipOptions.identities[0] as SelectionId).getKey()).toBe("selection-0");
     });
 
+    it("omits unavailable progress from tooltips and accessible labels", () => {
+        visual.update(makeUpdateOptions(sampleDataView({
+            tasks: ["No progress"],
+            startDates: ["2024-01-01"],
+            endDates: ["2024-02-01"],
+            progress: [null],
+            categories: []
+        })));
+        const dataPoint = element.querySelector<SVGGraphicsElement>(".gantt-data-point");
+        dataPoint?.dispatchEvent(new MouseEvent("mouseover", {
+            bubbles: true,
+            clientX: 10,
+            clientY: 20
+        }));
+
+        const tooltipOptions = harness.tooltipShow.mock.calls[0]?.[0] as powerbi.extensibility.TooltipShowOptions;
+        expect(tooltipOptions.dataItems.some(item => item.displayName === "Progress")).toBe(false);
+        expect(dataPoint?.getAttribute("aria-label")).not.toContain(", progress ");
+        expect(element.querySelector(".data-label")?.textContent).toBe("No progress");
+    });
+
     it("applies and removes a model filter in filter interaction mode", async () => {
         visual.update(makeUpdateOptions(sampleDataView({
             taskQueryName: "ObsoleteTable.ObsoleteTask",
@@ -473,6 +497,9 @@ describe("Gantt Visual integration", () => {
         const bodySvg = element.querySelector<SVGSVGElement>("svg.ganttBody");
         expect(bodySvg?.getAttribute("role")).toBe("button");
         expect(bodySvg?.getAttribute("tabindex")).toBe("0");
+        expect(element.textContent).toContain("No tasks match the current filter");
+        expect(element.textContent).toContain("press Enter to clear the task filter");
+        expect(element.textContent).not.toContain("Add Task");
 
         bodySvg?.dispatchEvent(new KeyboardEvent("keydown", {
             key: "Enter",
@@ -504,6 +531,51 @@ describe("Gantt Visual integration", () => {
 
         highContrastHarness.invokeSelectionCallback([createSelectionId(0)]);
         expect(firstDataPoint?.getAttribute("stroke")).toBe("#ffff00");
+        expect(highContrastElement.style.getPropertyValue("--gantt-focus-color")).toBe("#ffff00");
+    });
+
+    it("uses host foreground text defaults for dark themes", () => {
+        const darkHarness = createMockHost({
+            foreground: "#f5f5f5",
+            background: "#111111",
+            foregroundSelected: "#00ffff"
+        });
+        const darkElement = document.createElement("div");
+        const darkVisual = new Visual({
+            element: darkElement,
+            host: darkHarness.host
+        } as VisualConstructorOptions);
+
+        darkVisual.update(makeUpdateOptions(sampleDataView({
+            objects: {
+                title: {
+                    show: true,
+                    titleText: "Dark timeline"
+                }
+            } as powerbi.DataViewObjects
+        })));
+
+        expect(darkElement.querySelector(".chart-title")?.getAttribute("fill")).toBe("#f5f5f5");
+        expect(darkElement.querySelector(".y-label")?.getAttribute("fill")).toBe("#f5f5f5");
+        expect(darkElement.style.getPropertyValue("--gantt-focus-color")).toBe("#00ffff");
+    });
+
+    it("honors explicitly persisted text colors over host defaults", () => {
+        visual.update(makeUpdateOptions(sampleDataView({
+            objects: {
+                title: {
+                    show: true,
+                    titleText: "Custom timeline",
+                    fontColor: { solid: { color: "#123456" } }
+                },
+                categories: {
+                    fontColor: { solid: { color: "#654321" } }
+                }
+            } as powerbi.DataViewObjects
+        })));
+
+        expect(element.querySelector(".chart-title")?.getAttribute("fill")).toBe("#123456");
+        expect(element.querySelector(".y-label")?.getAttribute("fill")).toBe("#654321");
     });
 
     it("keeps multiple instances isolated and gives clip paths unique IDs", async () => {

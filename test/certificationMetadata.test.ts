@@ -113,6 +113,24 @@ describe("Power BI certification metadata", () => {
             expect(source).not.toMatch(pattern);
         }
     });
+
+    it("runs browser regressions through the production Visual and stylesheet", () => {
+        const packageManifest = readJson<PackageManifest>("package.json");
+        const harnessEntry = readText("test/visual-harness-entry.ts");
+        const harnessHtml = readText("test/visual-harness.html");
+        const productionStyles = readText("style/visual.less");
+
+        expect(harnessEntry).toContain("import { Visual } from \"../src/visual\"");
+        expect(harnessEntry).toContain("new Visual(");
+        expect(harnessEntry).not.toContain("new GanttChart(");
+        expect(harnessHtml).toContain("../.tmp/visual-harness.css");
+        expect(harnessHtml).not.toContain(".gantt-bar");
+        expect(packageManifest.scripts["test:visual:build"]).toContain("lessc style/visual.less");
+        expect(packageManifest.devDependencies.less).toBe("4.6.4");
+        expect(productionStyles).toContain("forced-color-adjust: none");
+        expect(productionStyles).not.toContain("@media (forced-colors:");
+        expect(productionStyles).not.toContain("-ms-high-contrast: active");
+    });
 });
 
 function readJson<T>(relativePath: string): T {

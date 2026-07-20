@@ -15,7 +15,7 @@
         "lint": "npm run eslint",
         "test": "vitest run",
         "test:watch": "vitest",
-        "test:visual:build": "npx esbuild test/visual-harness-entry.ts --bundle --outfile=.tmp/visual-harness-bundle.js --format=iife --target=es2020",
+        "test:visual:build": "node -e \"require('fs').mkdirSync('.tmp',{recursive:true})\" && npx lessc style/visual.less .tmp/visual-harness.css && npx esbuild test/visual-harness-entry.ts --bundle --outfile=.tmp/visual-harness-bundle.js --format=iife --target=es2020 --loader:.less=empty",
         "test:visual": "npm run test:visual:build && npx playwright test --config=playwright.config.ts",
         "test:visual:update": "npm run test:visual:build && npx playwright test --config=playwright.config.ts --update-snapshots"
     },
@@ -38,6 +38,7 @@
         "eslint-plugin-powerbi-visuals": "1.1.1",
         "happy-dom": "20.11.0",
         "http-server": "14.1.1",
+        "less": "4.6.4",
         "powerbi-visuals-tools": "7.1.2",
         "typescript": "5.9.3",
         "vitest": "4.1.10"

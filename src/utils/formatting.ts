@@ -68,11 +68,21 @@ export function formatDuration(durationDays: number, locale: string): string {
         return "Milestone";
     }
 
-    const formatter = new Intl.NumberFormat(locale, {
-        maximumFractionDigits: Number.isInteger(durationDays) ? 0 : 2
-    });
-    const formattedDays = formatter.format(durationDays);
-    return `${formattedDays} ${durationDays === 1 ? "day" : "days"}`;
+    if (durationDays >= 1) {
+        return formatDurationUnit(durationDays, "day", locale);
+    }
+
+    const durationHours = durationDays * 24;
+    if (durationHours >= 1) {
+        return formatDurationUnit(durationHours, "hour", locale);
+    }
+
+    const durationMinutes = durationHours * 60;
+    if (durationMinutes >= 1) {
+        return formatDurationUnit(durationMinutes, "minute", locale);
+    }
+
+    return "< 1 minute";
 }
 
 export function sanitizeInstanceId(instanceId: string): string {
@@ -85,4 +95,12 @@ function getUtcCalendarDate(value: Date): number {
     utcDate.setUTCFullYear(value.getFullYear(), value.getMonth(), value.getDate());
     utcDate.setUTCHours(0, 0, 0, 0);
     return utcDate.getTime();
+}
+
+function formatDurationUnit(value: number, unit: "day" | "hour" | "minute", locale: string): string {
+    const formatter = new Intl.NumberFormat(locale, {
+        maximumFractionDigits: Number.isInteger(value) ? 0 : 2
+    });
+    const formattedValue = formatter.format(value);
+    return `${formattedValue} ${value === 1 ? unit : `${unit}s`}`;
 }

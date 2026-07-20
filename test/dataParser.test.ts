@@ -68,7 +68,7 @@ describe("parseDataView", () => {
         expect(result?.tasks[0]?.durationLabel).toBe("Milestone");
     });
 
-    it("clamps progress and rejects non-finite values", () => {
+    it("clamps progress and preserves non-finite values as unavailable", () => {
         const result = parseDataView(buildMockDataView({
             tasks: ["Low", "Mid", "High", "Invalid"],
             startDates: ["2024-01-01", "2024-01-01", "2024-01-01", "2024-01-01"],
@@ -76,37 +76,53 @@ describe("parseDataView", () => {
             progress: [-20, 50, 150, Number.POSITIVE_INFINITY]
         }));
 
-        expect(result?.tasks.map(task => task.progress)).toEqual([0, 50, 100, 0]);
+        expect(result?.tasks.map(task => task.progress)).toEqual([0, 50, 100, null]);
     });
 
-    it("normalizes fractional measures that use a percentage format", () => {
+    it("uses one percentage scale for the entire formatted column", () => {
         const result = parseDataView(buildMockDataView({
-            tasks: ["Task"],
-            startDates: ["2024-01-01"],
-            endDates: ["2024-02-01"],
-            progress: [0.625],
+            tasks: ["Half", "Complete", "Over", "Large"],
+            startDates: ["2024-01-01", "2024-01-01", "2024-01-01", "2024-01-01"],
+            endDates: ["2024-02-01", "2024-02-01", "2024-02-01", "2024-02-01"],
+            progress: [0.625, 1, 1.01, 50],
             formats: { progress: "0.0%" }
         }), "en-US");
 
-        expect(result?.tasks[0]?.progress).toBe(62.5);
+        expect(result?.tasks.map(task => task.progress)).toEqual([62.5, 100, 100, 100]);
         expect(result?.tasks[0]?.progressLabel).toBe("62.5%");
+        expect(result?.tasks[1]?.progressLabel).toBe("100.0%");
+        expect(result?.tasks[2]?.progressLabel).toBe("100.0%");
     });
 
-    it("defaults missing and invalid progress to zero", () => {
+    it("distinguishes unavailable progress from explicit zero", () => {
         const missing = parseDataView(buildMockDataView({
             tasks: ["Task"],
             startDates: ["2024-01-01"],
             endDates: ["2024-02-01"]
         }));
-        const invalid = parseDataView(buildMockDataView({
-            tasks: ["Task"],
-            startDates: ["2024-01-01"],
-            endDates: ["2024-02-01"],
-            progress: ["not-a-number"]
+        const optionalValues = parseDataView(buildMockDataView({
+            tasks: ["Null", "Blank", "Invalid", "Zero"],
+            startDates: ["2024-01-01", "2024-01-01", "2024-01-01", "2024-01-01"],
+            endDates: ["2024-02-01", "2024-02-01", "2024-02-01", "2024-02-01"],
+            progress: [null, "", "not-a-number", 0]
         }));
 
-        expect(missing?.tasks[0]?.progressLabel).toBe("0%");
-        expect(invalid?.tasks[0]?.progress).toBe(0);
+        expect(missing?.tasks[0]?.progress).toBeNull();
+        expect(missing?.tasks[0]?.progressLabel).toBeNull();
+        expect(optionalValues?.tasks.map(task => task.progress)).toEqual([null, null, null, 0]);
+        expect(optionalValues?.tasks.map(task => task.progressLabel)).toEqual([null, null, null, "0%"]);
+    });
+
+    it("rejects nonnumeric progress types instead of coercing them", () => {
+        const result = parseDataView(buildMockDataView({
+            tasks: ["False", "True", "Date", "Whitespace", "Numeric string", "Exponent"],
+            startDates: Array.from({ length: 6 }, () => "2024-01-01"),
+            endDates: Array.from({ length: 6 }, () => "2024-02-01"),
+            progress: [false, true, new Date(2024, 0, 1), "   ", "50", "1e2"]
+        }));
+
+        expect(result?.tasks.map(task => task.progress))
+            .toEqual([null, null, null, null, 50, 100]);
     });
 
     it("skips rows with blank tasks or missing and invalid dates", () => {
@@ -127,6 +143,68 @@ describe("parseDataView", () => {
         }));
 
         expect(result?.tasks.map(task => task.name)).toEqual(["Good"]);
+    });
+
+    it("accepts supported ISO datetimes with local, UTC, and offset semantics", () => {
+        const result = parseDataView(buildMockDataView({
+            tasks: ["Local", "UTC", "Offset"],
+            startDates: [
+                "2024-02-29T12:30:45.123",
+                "2024-02-29T12:30:45Z",
+                "2024-02-29T12:30:45+05:30"
+            ],
+            endDates: [
+                "2024-02-29T13:30:45.123",
+                "2024-02-29T13:30:45Z",
+                "2024-02-29T13:30:45+05:30"
+            ]
+        }));
+
+        expect(result?.tasks).toHaveLength(3);
+        expect(result?.tasks.every(task => task.durationLabel === "1 hour")).toBe(true);
+    });
+
+    it("rejects impossible and non-ISO datetime strings", () => {
+        const result = parseDataView(buildMockDataView({
+            tasks: ["February 30", "Non-leap day", "Loose", "Bad time", "Bad offset", "Good"],
+            startDates: [
+                "2024-02-30T10:00:00Z",
+                "2023-02-29T10:00:00Z",
+                "02/20/2024 10:00",
+                "2024-02-20T24:01:00Z",
+                "2024-02-20T10:00:00+14:30",
+                "2024-02-20T10:00:00Z"
+            ],
+            endDates: [
+                "2024-03-01T10:00:00Z",
+                "2023-03-01T10:00:00Z",
+                "2024-02-20T11:00:00Z",
+                "2024-02-20T23:00:00Z",
+                "2024-02-20T11:00:00+14:30",
+                "2024-02-20T11:00:00Z"
+            ]
+        }));
+
+        expect(result?.tasks.map(task => task.name)).toEqual(["Good"]);
+    });
+
+    it("formats sub-day durations without rounding to zero days", () => {
+        const result = parseDataView(buildMockDataView({
+            tasks: ["Hours", "Minutes", "Seconds"],
+            startDates: [
+                "2024-01-01T00:00:00",
+                "2024-01-01T00:00:00",
+                "2024-01-01T00:00:00"
+            ],
+            endDates: [
+                "2024-01-01T06:00:00",
+                "2024-01-01T00:30:00",
+                "2024-01-01T00:00:30"
+            ]
+        }));
+
+        expect(result?.tasks.map(task => task.durationLabel))
+            .toEqual(["6 hours", "30 minutes", "< 1 minute"]);
     });
 
     it("deduplicates formatted category labels", () => {

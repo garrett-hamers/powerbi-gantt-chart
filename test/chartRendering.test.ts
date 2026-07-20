@@ -189,6 +189,27 @@ describe("Gantt chart rendering", () => {
         expect(labels[0]).toContain("100%");
     });
 
+    it("omits unavailable progress from overlays, labels, and ARIA", () => {
+        const data = parseDataView(buildMockDataView({
+            tasks: ["Missing", "Invalid", "Zero"],
+            startDates: ["2024-01-01", "2024-02-01", "2024-03-01"],
+            endDates: ["2024-01-31", "2024-02-28", "2024-03-31"],
+            progress: [null, "invalid", 0]
+        }))!;
+
+        new GanttChart(container, data, defaultSettings(), defaultDimensions()).render();
+        const labels = container.selectAll<SVGTextElement, GanttTask>(".data-label").nodes()
+            .map(label => label.textContent);
+        const ariaLabels = container.selectAll<SVGGraphicsElement, GanttTask>(".gantt-data-point").nodes()
+            .map(dataPoint => dataPoint.getAttribute("aria-label"));
+
+        expect(container.selectAll(".gantt-progress").size()).toBe(0);
+        expect(labels).toEqual(["Missing", "Invalid", "Zero (0%)"]);
+        expect(ariaLabels[0]).not.toContain("progress");
+        expect(ariaLabels[1]).not.toContain("progress");
+        expect(ariaLabels[2]).toContain("progress 0%");
+    });
+
     it("bars are color-coded by category", () => {
         new GanttChart(container, sampleData(), defaultSettings(), defaultDimensions()).render();
         const colors = new Set<string>();

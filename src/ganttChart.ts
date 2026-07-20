@@ -397,7 +397,10 @@ export class GanttChart {
         rowPositionByDataIndex: Map<number, number>,
         opacityForTask: (task: GanttTask) => number
     ): void {
-        const tasks = this.data.tasks.filter(task => !task.isMilestone && task.progress > 0);
+        const tasks = this.data.tasks.filter(
+            (task): task is GanttTask & { progress: number } =>
+                !task.isMilestone && task.progress !== null && task.progress > 0
+        );
         this.container.selectAll<SVGRectElement, GanttTask>("rect.gantt-progress")
             .data(tasks)
             .enter()
@@ -464,7 +467,7 @@ export class GanttChart {
             .attr("aria-hidden", "true")
             .text(task => {
                 const label = task.category || task.name;
-                return this.settings.dataLabels.showProgress
+                return this.settings.dataLabels.showProgress && task.progressLabel !== null
                     ? `${label} (${task.progressLabel})`
                     : label;
             });
@@ -474,8 +477,9 @@ export class GanttChart {
         task: GanttTask,
         colorForTask: (task: GanttTask) => string
     ): string {
+        const hasProgressOverlay = task.progress !== null && task.progress > 0 && !task.isMilestone;
         if (this.settings.highContrast.isActive) {
-            return task.progress > 0 && !task.isMilestone
+            return hasProgressOverlay
                 ? this.settings.highContrast.background
                 : this.settings.highContrast.foreground;
         }
@@ -484,7 +488,7 @@ export class GanttChart {
             return this.foregroundColor;
         }
 
-        const visibleFill = task.progress > 0
+        const visibleFill = hasProgressOverlay
             ? this.settings.progressColor
             : colorForTask(task);
         return getContrastTextColor(visibleFill);
@@ -494,8 +498,9 @@ export class GanttChart {
         task: GanttTask,
         colorForTask: (task: GanttTask) => string
     ): string {
+        const hasProgressOverlay = task.progress !== null && task.progress > 0 && !task.isMilestone;
         if (this.settings.highContrast.isActive) {
-            return task.progress > 0 && !task.isMilestone
+            return hasProgressOverlay
                 ? this.settings.highContrast.foreground
                 : this.settings.highContrast.background;
         }
@@ -637,8 +642,11 @@ export class GanttChart {
         const dateDescription = task.isMilestone
             ? `milestone on ${task.startDateLabel}`
             : `${task.startDateLabel} to ${task.endDateLabel}, ${task.durationLabel}`;
+        const progressDescription = task.progressLabel === null
+            ? ""
+            : `, progress ${task.progressLabel}`;
         const categoryDescription = task.category ? `, category ${task.category}` : "";
-        return `${task.name}, ${dateDescription}, progress ${task.progressLabel}${categoryDescription}`;
+        return `${task.name}, ${dateDescription}${progressDescription}${categoryDescription}`;
     }
 
     private get tickCount(): number {

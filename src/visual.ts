@@ -139,6 +139,7 @@ export class Visual implements IVisual {
         this.svg
             .on("click.gantt-clear", null)
             .on("keydown.gantt-clear", null)
+            .classed("filter-clearable", false)
             .attr("tabindex", null)
             .attr("aria-keyshortcuts", null);
 
@@ -255,7 +256,15 @@ export class Visual implements IVisual {
         const titleAlignment = String(this.formattingSettings.titleCard.alignment.value.value);
         const foregroundColor = palette.foreground?.value || "#333333";
         const backgroundColor = palette.background?.value || "#ffffff";
+        const focusColor = palette.foregroundSelected?.value || "#0078d4";
         const interactionsEnabled = this.host.hostCapabilities?.allowInteractions !== false;
+        const titleFontColor = this.hasFormattingProperty("title", "fontColor")
+            ? this.formattingSettings.titleCard.fontColor.value.value
+            : foregroundColor;
+        const categoryFontColor = this.hasFormattingProperty("categories", "fontColor")
+            ? this.formattingSettings.categoriesCard.fontColor.value.value
+            : foregroundColor;
+        this.target.style.setProperty("--gantt-focus-color", focusColor);
 
         return {
             instanceId: this.host.instanceId || "visual",
@@ -292,7 +301,7 @@ export class Visual implements IVisual {
                 show: this.formattingSettings.titleCard.show.value,
                 text: truncateText(this.formattingSettings.titleCard.titleText.value),
                 fontSize: clampNumber(this.formattingSettings.titleCard.fontSize.value, 8, 72, 16),
-                fontColor: this.formattingSettings.titleCard.fontColor.value.value || foregroundColor,
+                fontColor: titleFontColor || foregroundColor,
                 alignment: isTitleAlignment(titleAlignment) ? titleAlignment : "left"
             },
             dataLabels: {
@@ -303,7 +312,7 @@ export class Visual implements IVisual {
             categories: {
                 show: this.formattingSettings.categoriesCard.show.value,
                 fontSize: clampNumber(this.formattingSettings.categoriesCard.fontSize.value, 8, 40, 11),
-                fontColor: this.formattingSettings.categoriesCard.fontColor.value.value || foregroundColor
+                fontColor: categoryFontColor || foregroundColor
             },
             legend: {
                 show: this.formattingSettings.legendCard.show.value
@@ -672,7 +681,9 @@ export class Visual implements IVisual {
             );
         }
 
-        items.push({ displayName: "Progress", value: task.progressLabel });
+        if (task.progressLabel !== null) {
+            items.push({ displayName: "Progress", value: task.progressLabel });
+        }
         if (task.category) {
             items.push({ displayName: "Category", value: task.category });
         }
@@ -712,26 +723,36 @@ export class Visual implements IVisual {
 
     private renderLandingPage(width: number, height: number): void {
         const palette = this.host.colorPalette;
-        const foreground = palette.foregroundNeutralSecondary?.value
-            || palette.foreground?.value
-            || "#666666";
+        const foreground = palette.foreground?.value || "#333333";
         const background = palette.background?.value || "#ffffff";
         const centerX = width / 2;
         const centerY = height / 2;
 
         this.scrollBody.style.overflowY = "hidden";
         this.chartContainer.classed("landing", true);
-        const canClearFilter = this.host.hostCapabilities?.allowInteractions !== false
-            && this.taskFilterTarget !== null
+        const hasActiveTaskFilter = this.taskFilterTarget !== null
             && this.crossFilterValues.size > 0;
+        const canClearFilter = this.host.hostCapabilities?.allowInteractions !== false
+            && hasActiveTaskFilter;
+        const heading = hasActiveTaskFilter
+            ? "No tasks match the current filter"
+            : "Atlyn Gantt Chart";
+        const guidance = hasActiveTaskFilter
+            ? canClearFilter
+                ? "Select this message or press Enter to clear the task filter"
+                : "Clear the task filter in the Filters pane"
+            : "Add Task, Start Date, and End Date fields";
         this.svg
+            .classed("filter-clearable", canClearFilter)
             .attr("role", canClearFilter ? "button" : "img")
             .attr("tabindex", canClearFilter ? 0 : null)
             .attr("aria-keyshortcuts", canClearFilter ? "Enter Space Escape" : null)
             .attr(
                 "aria-label",
-                canClearFilter
-                    ? "Atlyn Gantt Chart has no matching tasks. Activate to clear the task filter."
+                hasActiveTaskFilter
+                    ? canClearFilter
+                        ? "Atlyn Gantt Chart has no matching tasks. Activate to clear the task filter."
+                        : "Atlyn Gantt Chart has no matching tasks. Clear the task filter in the Filters pane."
                     : "Atlyn Gantt Chart. Add Task, Start Date, and End Date fields."
             );
         if (canClearFilter) {
@@ -757,7 +778,7 @@ export class Visual implements IVisual {
             .attr("font-size", "14px")
             .attr("font-weight", "bold")
             .attr("aria-hidden", "true")
-            .text("Atlyn Gantt Chart");
+            .text(heading);
         this.chartContainer.append("text")
             .attr("x", centerX)
             .attr("y", Math.max(28, centerY + 14))
@@ -765,7 +786,7 @@ export class Visual implements IVisual {
             .attr("fill", foreground)
             .attr("font-size", "11px")
             .attr("aria-hidden", "true")
-            .text("Add Task, Start Date, and End Date fields");
+            .text(guidance);
     }
 }
 

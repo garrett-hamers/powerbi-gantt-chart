@@ -10,7 +10,8 @@ A free, open-source Power BI custom visual for project timelines, milestones, pr
 
 - Date-scaled task bars with pinned axis and vertical scrolling
 - Visible diamond milestones when start and end dates are equal
-- Progress overlays supporting both 0-100 values and percentage-formatted fractions
+- Column-consistent progress overlays supporting 0-100 values or percentage-formatted fractions; blank and invalid progress remains unavailable
+- Strict ISO date and datetime parsing, with hour/minute labels for sub-day tasks
 - Category colors, legend, labels, grid lines, title, and today line
 - Model-format-aware dates, progress values, and custom tooltip measures
 - Selection, multi-selection, cross-highlighting, and optional model-filter interaction
@@ -25,7 +26,7 @@ A free, open-source Power BI custom visual for project timelines, milestones, pr
 | **Task** | Grouping | Yes | Task or work item name |
 | **Start Date** | Measure | Yes | Task start date |
 | **End Date** | Measure | Yes | Task end date; equal dates render a milestone |
-| **Progress** | Measure | No | Completion as 0-100 or a percentage-formatted fraction |
+| **Progress** | Measure | No | Completion as 0-100 or a percentage-formatted fraction; blank/invalid values are omitted |
 | **Category** | Grouping | No | Group or phase used for color |
 | **Tooltips** | Measure | No | One or more additional model-formatted tooltip values |
 
