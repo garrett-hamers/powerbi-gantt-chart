@@ -1,5 +1,8 @@
 node_modules/
 .tmp/
-dist/*.pbiviz
-!dist/atlynGanttChart.pbiviz
+dist/
+test-results/
+playwright-report/
+.playwright-mcp/
 webpack.statistics.prod.html
+*.log

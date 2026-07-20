@@ -1,33 +1,55 @@
-/**
- * Mock DataView builder for Gantt chart tests.
- */
+import type powerbi from "powerbi-visuals-api";
+
 export interface MockDataInput {
-    tasks: string[];
-    startDates: Array<string | number | Date | null>;
-    endDates: Array<string | number | Date | null>;
-    progress?: Array<number | null>;
-    categories?: string[];
+    tasks: powerbi.PrimitiveValue[];
+    startDates: powerbi.PrimitiveValue[];
+    endDates: powerbi.PrimitiveValue[];
+    progress?: powerbi.PrimitiveValue[];
+    categories?: powerbi.PrimitiveValue[];
+    formats?: {
+        task?: string;
+        startDate?: string;
+        endDate?: string;
+        progress?: string;
+    };
+    highlights?: {
+        startDates?: powerbi.PrimitiveValue[];
+        endDates?: powerbi.PrimitiveValue[];
+        progress?: powerbi.PrimitiveValue[];
+    };
     tooltipMeasures?: Array<{
         displayName: string;
-        values: Array<string | number | boolean | null | undefined>;
+        values: powerbi.PrimitiveValue[];
+        format?: string;
     }>;
+    objects?: powerbi.DataViewObjects;
+    taskQueryName?: string;
+    taskExpression?: powerbi.data.ISQExpr;
+    taskFieldParameterExpression?: powerbi.data.ISQExpr;
 }
 
-export function buildMockDataView(input: MockDataInput): any {
+export function buildMockDataView(input: MockDataInput): powerbi.DataView {
     const taskColumn = {
         source: {
             displayName: "Task",
-            queryName: "Table.Task",
+            queryName: input.taskQueryName || "Table.Task",
             type: { text: true },
-            roles: { task: true }
+            roles: { task: true },
+            format: input.formats?.task,
+            expr: input.taskExpression,
+            sourceFieldParameters: input.taskFieldParameterExpression
+                ? [{
+                    displayName: "Selected task field",
+                    expr: input.taskFieldParameterExpression
+                }]
+                : undefined
         },
         values: input.tasks
-    };
+    } as powerbi.DataViewCategoryColumn;
 
-    const allCategories: any[] = [taskColumn];
-
+    const categoryColumns: powerbi.DataViewCategoryColumn[] = [taskColumn];
     if (input.categories) {
-        allCategories.push({
+        categoryColumns.push({
             source: {
                 displayName: "Category",
                 queryName: "Table.Category",
@@ -35,69 +57,81 @@ export function buildMockDataView(input: MockDataInput): any {
                 roles: { category: true }
             },
             values: input.categories
-        });
+        } as powerbi.DataViewCategoryColumn);
     }
 
-    const valueColumns: any[] = [];
-
-    valueColumns.push({
-        source: {
-            displayName: "Start Date",
-            queryName: "Table.StartDate",
-            roles: { startDate: true }
+    const valueColumns: powerbi.DataViewValueColumn[] = [
+        {
+            source: {
+                displayName: "Start Date",
+                queryName: "Table.StartDate",
+                type: { dateTime: true },
+                roles: { startDate: true },
+                format: input.formats?.startDate
+            },
+            values: input.startDates,
+            highlights: input.highlights?.startDates
         },
-        values: input.startDates
-    });
-
-    valueColumns.push({
-        source: {
-            displayName: "End Date",
-            queryName: "Table.EndDate",
-            roles: { endDate: true }
-        },
-        values: input.endDates
-    });
+        {
+            source: {
+                displayName: "End Date",
+                queryName: "Table.EndDate",
+                type: { dateTime: true },
+                roles: { endDate: true },
+                format: input.formats?.endDate
+            },
+            values: input.endDates,
+            highlights: input.highlights?.endDates
+        }
+    ];
 
     if (input.progress) {
         valueColumns.push({
             source: {
                 displayName: "Progress",
                 queryName: "Table.Progress",
-                roles: { progress: true }
+                type: { numeric: true },
+                roles: { progress: true },
+                format: input.formats?.progress
             },
-            values: input.progress
+            values: input.progress,
+            highlights: input.highlights?.progress
         });
     }
 
-    if (input.tooltipMeasures) {
-        input.tooltipMeasures.forEach((measure, index) => {
-            valueColumns.push({
-                source: {
-                    displayName: measure.displayName,
-                    queryName: `Table.Tooltip${index + 1}`,
-                    roles: { tooltips: true }
-                },
-                values: measure.values
-            });
+    input.tooltipMeasures?.forEach((measure, index) => {
+        valueColumns.push({
+            source: {
+                displayName: measure.displayName,
+                queryName: `Table.Tooltip${index + 1}`,
+                roles: { tooltips: true },
+                format: measure.format
+            },
+            values: measure.values
         });
-    }
+    });
 
-    const columns = allCategories.map(c => c.source).concat(valueColumns.map(v => v.source));
+    const columns = categoryColumns
+        .map(column => column.source)
+        .concat(valueColumns.map(column => column.source));
 
     return {
         categorical: {
-            categories: allCategories,
-            values: valueColumns
+            categories: categoryColumns,
+            values: valueColumns as powerbi.DataViewValueColumns
         },
-        metadata: { columns }
+        metadata: {
+            columns,
+            objects: input.objects
+        }
     };
 }
 
-export function buildEmptyDataView(): any {
+export function buildEmptyDataView(): powerbi.DataView {
     return {
         categorical: {
             categories: [],
-            values: []
+            values: [] as unknown as powerbi.DataViewValueColumns
         },
         metadata: { columns: [] }
     };

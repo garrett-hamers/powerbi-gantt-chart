@@ -1,201 +1,237 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { parseDataView } from "../src/dataParser";
-import { buildMockDataView, buildEmptyDataView } from "./helpers/mockDataView";
+import { buildEmptyDataView, buildMockDataView } from "./helpers/mockDataView";
 
 describe("parseDataView", () => {
-    it("parses tasks with start and end dates", () => {
-        const dv = buildMockDataView({
+    it("parses tasks and preserves row indexes for selection identities", () => {
+        const result = parseDataView(buildMockDataView({
             tasks: ["Task A", "Task B"],
             startDates: ["2024-01-01", "2024-02-01"],
             endDates: ["2024-01-31", "2024-03-15"]
-        });
-        const result = parseDataView(dv)!;
-        expect(result).not.toBeNull();
-        expect(result.tasks).toHaveLength(2);
-        expect(result.tasks[0].name).toBe("Task A");
-        expect(result.tasks[0].startDate).toBeInstanceOf(Date);
-        expect(result.tasks[0].endDate).toBeInstanceOf(Date);
+        }));
+
+        expect(result?.tasks).toHaveLength(2);
+        expect(result?.tasks[0]?.name).toBe("Task A");
+        expect(result?.tasks.map(task => task.rowIndex)).toEqual([0, 1]);
+        expect(result?.tasks[0]?.filterValue).toBe("Task A");
     });
 
-    it("parses date strings correctly", () => {
-        const dv = buildMockDataView({
+    it("parses date-only strings as local calendar dates", () => {
+        const result = parseDataView(buildMockDataView({
             tasks: ["Task"],
             startDates: ["2024-06-15"],
             endDates: ["2024-07-20"]
-        });
-        const result = parseDataView(dv)!;
-        expect(result.tasks[0].startDate.getFullYear()).toBe(2024);
-        expect(result.tasks[0].startDate.getMonth()).toBe(5); // June = 5
+        }));
+
+        expect(result?.tasks[0]?.startDate.getFullYear()).toBe(2024);
+        expect(result?.tasks[0]?.startDate.getMonth()).toBe(5);
+        expect(result?.tasks[0]?.startDate.getDate()).toBe(15);
+        expect(result?.tasks[0]?.startDate.getHours()).toBe(0);
     });
 
-    it("parses numeric timestamps as dates", () => {
-        const start = new Date("2024-01-01").getTime();
-        const end = new Date("2024-02-01").getTime();
-        const dv = buildMockDataView({
+    it("parses finite numeric timestamps and Date objects", () => {
+        const start = new Date(2024, 0, 1);
+        const end = new Date(2024, 1, 1);
+        const result = parseDataView(buildMockDataView({
             tasks: ["Task"],
-            startDates: [start],
+            startDates: [start.getTime()],
             endDates: [end]
-        });
-        const result = parseDataView(dv)!;
-        expect(result.tasks[0].startDate.getTime()).toBe(start);
+        }));
+
+        expect(result?.tasks[0]?.startDate.getTime()).toBe(start.getTime());
+        expect(result?.tasks[0]?.endDate.getTime()).toBe(end.getTime());
+        expect(result?.tasks[0]?.endDate).not.toBe(end);
     });
 
-    it("clamps progress to 0-100 range", () => {
-        const dv = buildMockDataView({
-            tasks: ["A", "B", "C"],
-            startDates: ["2024-01-01", "2024-01-01", "2024-01-01"],
-            endDates: ["2024-02-01", "2024-02-01", "2024-02-01"],
-            progress: [-20, 50, 150]
-        });
-        const result = parseDataView(dv)!;
-        expect(result.tasks[0].progress).toBe(0);
-        expect(result.tasks[1].progress).toBe(50);
-        expect(result.tasks[2].progress).toBe(100);
+    it("auto-swaps reversed dates and computes a positive duration", () => {
+        const result = parseDataView(buildMockDataView({
+            tasks: ["Swapped"],
+            startDates: ["2024-06-30"],
+            endDates: ["2024-01-15"]
+        }));
+
+        expect(result?.tasks[0]?.startDate.getTime())
+            .toBeLessThan(result?.tasks[0]?.endDate.getTime() ?? 0);
+        expect(result?.tasks[0]?.durationDays).toBe(167);
+        expect(result?.tasks[0]?.durationLabel).toBe("167 days");
     });
 
-    it("defaults progress to 0 when not provided", () => {
-        const dv = buildMockDataView({
+    it("detects zero-duration tasks as milestones", () => {
+        const result = parseDataView(buildMockDataView({
+            tasks: ["Release"],
+            startDates: ["2024-04-15"],
+            endDates: ["2024-04-15"]
+        }));
+
+        expect(result?.tasks[0]?.isMilestone).toBe(true);
+        expect(result?.tasks[0]?.durationDays).toBe(0);
+        expect(result?.tasks[0]?.durationLabel).toBe("Milestone");
+    });
+
+    it("clamps progress and rejects non-finite values", () => {
+        const result = parseDataView(buildMockDataView({
+            tasks: ["Low", "Mid", "High", "Invalid"],
+            startDates: ["2024-01-01", "2024-01-01", "2024-01-01", "2024-01-01"],
+            endDates: ["2024-02-01", "2024-02-01", "2024-02-01", "2024-02-01"],
+            progress: [-20, 50, 150, Number.POSITIVE_INFINITY]
+        }));
+
+        expect(result?.tasks.map(task => task.progress)).toEqual([0, 50, 100, 0]);
+    });
+
+    it("normalizes fractional measures that use a percentage format", () => {
+        const result = parseDataView(buildMockDataView({
+            tasks: ["Task"],
+            startDates: ["2024-01-01"],
+            endDates: ["2024-02-01"],
+            progress: [0.625],
+            formats: { progress: "0.0%" }
+        }), "en-US");
+
+        expect(result?.tasks[0]?.progress).toBe(62.5);
+        expect(result?.tasks[0]?.progressLabel).toBe("62.5%");
+    });
+
+    it("defaults missing and invalid progress to zero", () => {
+        const missing = parseDataView(buildMockDataView({
             tasks: ["Task"],
             startDates: ["2024-01-01"],
             endDates: ["2024-02-01"]
-        });
-        const result = parseDataView(dv)!;
-        expect(result.tasks[0].progress).toBe(0);
+        }));
+        const invalid = parseDataView(buildMockDataView({
+            tasks: ["Task"],
+            startDates: ["2024-01-01"],
+            endDates: ["2024-02-01"],
+            progress: ["not-a-number"]
+        }));
+
+        expect(missing?.tasks[0]?.progressLabel).toBe("0%");
+        expect(invalid?.tasks[0]?.progress).toBe(0);
     });
 
-    it("skips tasks with missing start date", () => {
-        const dv = buildMockDataView({
-            tasks: ["Good", "Bad"],
-            startDates: ["2024-01-01", null],
-            endDates: ["2024-02-01", "2024-03-01"]
-        });
-        const result = parseDataView(dv)!;
-        expect(result.tasks).toHaveLength(1);
-        expect(result.tasks[0].name).toBe("Good");
+    it("skips rows with blank tasks or missing and invalid dates", () => {
+        const result = parseDataView(buildMockDataView({
+            tasks: ["Good", "", "Missing Start", "Missing End", "Invalid"],
+            startDates: ["2024-01-01", "2024-01-01", null, "2024-01-01", "2024-02-30"],
+            endDates: ["2024-02-01", "2024-02-01", "2024-02-01", null, "2024-03-01"]
+        }));
+
+        expect(result?.tasks.map(task => task.name)).toEqual(["Good"]);
     });
 
-    it("skips tasks with missing end date", () => {
-        const dv = buildMockDataView({
-            tasks: ["Good", "Bad"],
-            startDates: ["2024-01-01", "2024-02-01"],
-            endDates: ["2024-02-01", null]
-        });
-        const result = parseDataView(dv)!;
-        expect(result.tasks).toHaveLength(1);
+    it("rejects infinite, boolean, and out-of-range dates without throwing", () => {
+        const result = parseDataView(buildMockDataView({
+            tasks: ["Infinite", "Boolean", "Too Early", "Good"],
+            startDates: [Number.POSITIVE_INFINITY, true, "0000-01-01", "2024-01-01"],
+            endDates: ["2024-01-01", "2024-01-01", "2024-01-02", "2024-01-02"]
+        }));
+
+        expect(result?.tasks.map(task => task.name)).toEqual(["Good"]);
     });
 
-    it("skips tasks with invalid date strings", () => {
-        const dv = buildMockDataView({
-            tasks: ["Good", "Bad"],
-            startDates: ["2024-01-01", "not-a-date"],
-            endDates: ["2024-02-01", "2024-03-01"]
-        });
-        const result = parseDataView(dv)!;
-        expect(result.tasks).toHaveLength(1);
-    });
-
-    it("parses categories correctly", () => {
-        const dv = buildMockDataView({
+    it("deduplicates formatted category labels", () => {
+        const result = parseDataView(buildMockDataView({
             tasks: ["A", "B", "C"],
             startDates: ["2024-01-01", "2024-02-01", "2024-03-01"],
             endDates: ["2024-01-31", "2024-02-28", "2024-03-31"],
             categories: ["Phase 1", "Phase 1", "Phase 2"]
-        });
-        const result = parseDataView(dv)!;
-        expect(result.categories).toContain("Phase 1");
-        expect(result.categories).toContain("Phase 2");
-        expect(result.categories).toHaveLength(2);
+        }));
+
+        expect(result?.categories).toEqual(["Phase 1", "Phase 2"]);
     });
 
-    it("parses tooltip measures", () => {
-        const dv = buildMockDataView({
-            tasks: ["A", "B"],
-            startDates: ["2024-01-01", "2024-02-01"],
-            endDates: ["2024-01-31", "2024-02-28"],
+    it("applies source format strings to tooltip values", () => {
+        const result = parseDataView(buildMockDataView({
+            tasks: ["A"],
+            startDates: ["2024-01-01"],
+            endDates: ["2024-01-31"],
             tooltipMeasures: [
-                { displayName: "Budget", values: [1000, 2000] }
+                { displayName: "Budget", values: [1234], format: "$#,0" },
+                { displayName: "Risk", values: ["Low"] }
             ]
-        });
-        const result = parseDataView(dv)!;
-        expect(result.tasks[0].tooltipFields).toEqual([
-            { displayName: "Budget", value: "1000" }
+        }), "en-US");
+
+        expect(result?.tasks[0]?.tooltipFields).toEqual([
+            { displayName: "Budget", value: "$1,234" },
+            { displayName: "Risk", value: "Low" }
         ]);
     });
 
-    it("skips null/empty tooltip values but keeps zero", () => {
-        const dv = buildMockDataView({
-            tasks: ["A", "B", "C"],
-            startDates: ["2024-01-01", "2024-02-01", "2024-03-01"],
-            endDates: ["2024-01-31", "2024-02-28", "2024-03-31"],
+    it("omits blank tooltip values but keeps zero and false", () => {
+        const result = parseDataView(buildMockDataView({
+            tasks: ["A", "B", "C", "D"],
+            startDates: ["2024-01-01", "2024-02-01", "2024-03-01", "2024-04-01"],
+            endDates: ["2024-01-31", "2024-02-28", "2024-03-31", "2024-04-30"],
             tooltipMeasures: [
-                { displayName: "KPI", values: [null, 0, ""] }
+                { displayName: "KPI", values: [null, 0, "", false] }
             ]
-        });
-        const result = parseDataView(dv)!;
-        expect(result.tasks[0].tooltipFields).toEqual([]);
-        expect(result.tasks[1].tooltipFields).toEqual([{ displayName: "KPI", value: "0" }]);
-        expect(result.tasks[2].tooltipFields).toEqual([]);
+        }));
+
+        expect(result?.tasks[0]?.tooltipFields).toEqual([]);
+        expect(result?.tasks[1]?.tooltipFields[0]?.value).toBe("0");
+        expect(result?.tasks[2]?.tooltipFields).toEqual([]);
+        expect(result?.tasks[3]?.tooltipFields[0]?.value).toBe("False");
     });
 
-    it("computes minDate and maxDate from all tasks", () => {
-        const dv = buildMockDataView({
+    it("computes the date extent across valid rows", () => {
+        const result = parseDataView(buildMockDataView({
             tasks: ["A", "B"],
             startDates: ["2024-03-01", "2024-01-01"],
             endDates: ["2024-04-01", "2024-06-01"]
-        });
-        const result = parseDataView(dv)!;
-        expect(result.minDate.getTime()).toBe(new Date("2024-01-01").getTime());
-        expect(result.maxDate.getTime()).toBe(new Date("2024-06-01").getTime());
+        }));
+
+        expect(result?.minDate).toEqual(new Date(2024, 0, 1));
+        expect(result?.maxDate).toEqual(new Date(2024, 5, 1));
     });
 
-    it("returns null for empty DataView", () => {
+    it("marks rows from incoming cross-highlights", () => {
+        const result = parseDataView(buildMockDataView({
+            tasks: ["Dimmed", "Highlighted"],
+            startDates: ["2024-01-01", "2024-02-01"],
+            endDates: ["2024-01-31", "2024-02-28"],
+            highlights: {
+                startDates: [null, "2024-02-01"],
+                endDates: [null, "2024-02-28"]
+            }
+        }));
+
+        expect(result?.hasHighlights).toBe(true);
+        expect(result?.tasks.map(task => task.highlighted)).toEqual([false, true]);
+    });
+
+    it("dims every row when an active cross-highlight has no matches", () => {
+        const result = parseDataView(buildMockDataView({
+            tasks: ["A", "B"],
+            startDates: ["2024-01-01", "2024-02-01"],
+            endDates: ["2024-01-31", "2024-02-28"],
+            highlights: {
+                startDates: [null, null]
+            }
+        }));
+
+        expect(result?.hasHighlights).toBe(true);
+        expect(result?.tasks.map(task => task.highlighted)).toEqual([false, false]);
+    });
+
+    it("bounds extreme user text before it reaches the DOM", () => {
+        const result = parseDataView(buildMockDataView({
+            tasks: ["x".repeat(1_000)],
+            startDates: ["2024-01-01"],
+            endDates: ["2024-02-01"]
+        }));
+
+        expect(result?.tasks[0]?.name).toHaveLength(512);
+        expect(result?.tasks[0]?.name.endsWith("\u2026")).toBe(true);
+    });
+
+    it("returns null for empty, missing, and wholly invalid data views", () => {
         expect(parseDataView(buildEmptyDataView())).toBeNull();
-    });
-
-    it("returns null for null/undefined input", () => {
-        expect(parseDataView(null as any)).toBeNull();
-        expect(parseDataView(undefined as any)).toBeNull();
-    });
-
-    it("returns null when all dates are invalid", () => {
-        const dv = buildMockDataView({
+        expect(parseDataView(null)).toBeNull();
+        expect(parseDataView(undefined)).toBeNull();
+        expect(parseDataView(buildMockDataView({
             tasks: ["A", "B"],
             startDates: ["invalid", "nope"],
             endDates: ["bad", "worse"]
-        });
-        expect(parseDataView(dv)).toBeNull();
-    });
-
-    it("preserves rowIndex for selection mapping", () => {
-        const dv = buildMockDataView({
-            tasks: ["A", "B", "C"],
-            startDates: ["2024-01-01", "2024-02-01", "2024-03-01"],
-            endDates: ["2024-01-31", "2024-02-28", "2024-03-31"]
-        });
-        const result = parseDataView(dv)!;
-        expect(result.tasks.map(t => t.rowIndex)).toEqual([0, 1, 2]);
-    });
-
-    it("handles single task", () => {
-        const dv = buildMockDataView({
-            tasks: ["Solo"],
-            startDates: ["2024-01-01"],
-            endDates: ["2024-12-31"]
-        });
-        const result = parseDataView(dv)!;
-        expect(result.tasks).toHaveLength(1);
-        expect(result.tasks[0].name).toBe("Solo");
-    });
-
-    it("auto-swaps dates when start > end", () => {
-        const dv = buildMockDataView({
-            tasks: ["Swapped"],
-            startDates: ["2024-06-30"],
-            endDates: ["2024-01-15"]
-        });
-        const result = parseDataView(dv)!;
-        expect(result).not.toBeNull();
-        expect(result.tasks).toHaveLength(1);
-        expect(result.tasks[0].startDate.getTime()).toBeLessThan(result.tasks[0].endDate.getTime());
+        }))).toBeNull();
     });
 });

@@ -1,8 +1,8 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, Page } from "@playwright/test";
 
 const BASE = "http://localhost:9222/test/visual-harness.html";
 
-async function waitForRender(page: any) {
+async function waitForRender(page: Page): Promise<void> {
     await page.waitForSelector("[data-rendered='true']", { timeout: 10000 });
     // Brief pause for SVG paint
     await page.waitForTimeout(300);

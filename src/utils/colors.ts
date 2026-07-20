@@ -20,36 +20,57 @@ export const DEFAULT_GANTT_COLORS: GanttColors = {
 };
 
 export function getCategoryColor(index: number, colors: string[]): string {
-    return colors[index % colors.length];
+    const fallbackColor = DEFAULT_GANTT_COLORS.categoryColors[0] ?? "#2196F3";
+    if (colors.length === 0) {
+        return fallbackColor;
+    }
+
+    const normalizedIndex = ((index % colors.length) + colors.length) % colors.length;
+    return colors[normalizedIndex] || fallbackColor;
 }
 
-/** Parse a hex color (#RRGGBB or #RGB) into [r, g, b] */
-function parseHex(hex: string): [number, number, number] {
-    hex = hex.replace("#", "");
-    if (hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
-    return [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)];
+function parseHex(value: string): [number, number, number] | null {
+    const shortMatch = /^#([\da-f])([\da-f])([\da-f])$/i.exec(value);
+    if (shortMatch) {
+        const red = shortMatch[1] ?? "0";
+        const green = shortMatch[2] ?? "0";
+        const blue = shortMatch[3] ?? "0";
+        return [
+            Number.parseInt(`${red}${red}`, 16),
+            Number.parseInt(`${green}${green}`, 16),
+            Number.parseInt(`${blue}${blue}`, 16)
+        ];
+    }
+
+    const longMatch = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(value);
+    if (!longMatch) {
+        return null;
+    }
+
+    return [
+        Number.parseInt(longMatch[1] ?? "00", 16),
+        Number.parseInt(longMatch[2] ?? "00", 16),
+        Number.parseInt(longMatch[3] ?? "00", 16)
+    ];
 }
 
-/** Relative luminance (0 = black, 1 = white) per WCAG */
 export function getLuminance(hex: string): number {
-    const [r, g, b] = parseHex(hex).map(c => {
-        const s = c / 255;
+    const rgb = parseHex(hex);
+    if (!rgb) {
+        return 1;
+    }
+
+    const linearize = (component: number): number => {
+        const s = component / 255;
         return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
-    });
+    };
+    const [red, green, blue] = rgb;
+    const r = linearize(red);
+    const g = linearize(green);
+    const b = linearize(blue);
     return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-/** Returns "#333333" for light backgrounds, "#ffffff" for dark backgrounds */
 export function getContrastTextColor(bgHex: string): string {
     return getLuminance(bgHex) > 0.4 ? "#333333" : "#ffffff";
-}
-
-/** Darken a hex color by a factor (0 = unchanged, 1 = black) */
-export function darkenColor(hex: string, amount: number): string {
-    const [r, g, b] = parseHex(hex);
-    const f = 1 - amount;
-    const dr = Math.round(r * f);
-    const dg = Math.round(g * f);
-    const db = Math.round(b * f);
-    return `#${dr.toString(16).padStart(2, "0")}${dg.toString(16).padStart(2, "0")}${db.toString(16).padStart(2, "0")}`;
 }

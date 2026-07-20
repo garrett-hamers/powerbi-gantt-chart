@@ -1,4 +1,6 @@
 {
+    "supportsLandingPage": true,
+    "supportsEmptyDataView": true,
     "supportsHighlight": true,
     "supportsKeyboardFocus": true,
     "tooltips": {
@@ -6,7 +8,8 @@
             "default": true,
             "canvas": true
         },
-        "roles": ["tooltips"]
+        "roles": ["tooltips"],
+        "supportEnhancedTooltips": true
     },
     "dataRoles": [
         {
@@ -194,9 +197,9 @@
         {
             "conditions": [
                 {
-                    "task": { "max": 1 },
-                    "startDate": { "max": 1 },
-                    "endDate": { "max": 1 },
+                    "task": { "min": 1, "max": 1 },
+                    "startDate": { "min": 1, "max": 1 },
+                    "endDate": { "min": 1, "max": 1 },
                     "progress": { "max": 1 },
                     "category": { "max": 1 }
                 }
@@ -214,7 +217,7 @@
                         { "bind": { "to": "startDate" } },
                         { "bind": { "to": "endDate" } },
                         { "bind": { "to": "progress" } },
-                        { "bind": { "to": "tooltips" } }
+                        { "for": { "in": "tooltips" } }
                     ]
                 }
             }

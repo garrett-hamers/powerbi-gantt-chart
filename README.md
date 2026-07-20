@@ -1,120 +1,74 @@
 # Atlyn Gantt Chart
 
-A free, open-source Power BI custom visual for Gantt charts. Visualize project timelines with task bars, progress tracking, and category coloring — ideal for project management, sprint planning, and scheduling.
+A free, open-source Power BI custom visual for project timelines, milestones, progress, categories, and report interactions.
 
-![Power BI](https://img.shields.io/badge/Power_BI-API_5.3-yellow)
+![Power BI](https://img.shields.io/badge/Power_BI-API_5.11-yellow)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![Version](https://img.shields.io/badge/Version-1.0.0-blue)
-
----
+![Version](https://img.shields.io/badge/Version-1.0.1.0-blue)
 
 ## Features
 
-### Timeline Visualization
-- Horizontal bars on a time-scaled X axis
-- Each bar spans from task start date to end date
-- Y axis shows task names using d3.scaleBand
+- Date-scaled task bars with pinned axis and vertical scrolling
+- Visible diamond milestones when start and end dates are equal
+- Progress overlays supporting both 0-100 values and percentage-formatted fractions
+- Category colors, legend, labels, grid lines, title, and today line
+- Model-format-aware dates, progress values, and custom tooltip measures
+- Selection, multi-selection, cross-highlighting, and optional model-filter interaction
+- Data-point and background context menus
+- Keyboard operation, ARIA labels, focus indicators, and host-driven high-contrast colors
+- Safe handling for empty, partial, invalid, non-finite, reversed, and high-volume data
 
-### Progress Tracking
-- Optional progress overlay (filled portion of each bar)
-- Progress percentage shown in data labels
-- Configurable progress color
-
-### Visual Elements
-- Today line (vertical dashed line at current date)
-- Grid lines for time periods
-- Color-coded bars by category/phase
-- 5-color customizable category palette
-
-### Interactive
-- Click a bar to select a task
-- Ctrl+click for multi-select
-- Hover tooltips with task details, dates, progress, and custom measures
-- Right-click context menu
-
----
-
-## Data Roles
+## Data roles
 
 | Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| **Task** | Grouping | ✅ | Task name |
-| **Start Date** | Measure | ✅ | Task start date |
-| **End Date** | Measure | ✅ | Task end date |
-| **Progress** | Measure | | Completion percentage (0-100) |
-| **Category** | Grouping | | Group/phase for color coding |
-| **Tooltips** | Measure | | Additional measures shown in tooltips |
+| --- | --- | --- | --- |
+| **Task** | Grouping | Yes | Task or work item name |
+| **Start Date** | Measure | Yes | Task start date |
+| **End Date** | Measure | Yes | Task end date; equal dates render a milestone |
+| **Progress** | Measure | No | Completion as 0-100 or a percentage-formatted fraction |
+| **Category** | Grouping | No | Group or phase used for color |
+| **Tooltips** | Measure | No | One or more additional model-formatted tooltip values |
 
----
-
-## Format Pane Options
+## Format options
 
 | Card | Options |
-|------|---------|
-| **Chart Settings** | Show today line, show grid lines, bar height, bar corner radius |
-| **Title** | Show/hide, text, font size, color, alignment |
-| **Data Labels** | Show/hide, font size, show progress % |
-| **Categories** | Show/hide, font size, font color |
-| **Design** | 5 category colors, progress color, today line color, bar opacity |
-| **Interaction** | Enable selection, enable tooltips, cross-filter mode |
+| --- | --- |
+| **Chart Settings** | Today line, grid lines, bar height, corner radius |
+| **Title** | Visibility, text, size, color, alignment |
+| **Data Labels** | Visibility, size, progress value |
+| **Categories** | Visibility, size, color |
+| **Legend** | Visibility |
+| **Design** | Category colors, progress color, today line color, opacity |
+| **Interaction** | Selection, tooltips, highlight or model-filter mode |
 
----
+## Development
 
-## Installation
+Requirements: Node.js and npm supported by `powerbi-visuals-tools` 7.1.2.
 
-### From Package
-1. Download `atlynGanttChart.pbiviz` from the [`dist/`](dist/) folder
-2. In Power BI Desktop → **File → Import → Power BI Visual**
-3. Select the downloaded file
-
-### Development
-
-```bash
-# Install dependencies
-npm install
-
-# Start dev server (requires Power BI developer mode)
-npm start
-
-# Run tests
+```powershell
+npm ci
+npm run eslint
 npm test
-
-# Package for distribution
+npm run test:visual
 npm run package
 ```
 
----
+`npm run package` invokes `pbiviz package --certification-audit`. Build output is intentionally excluded from source control; use the audited `.pbiviz` produced in `dist`.
 
-## Testing
+## Certification and privacy
 
-Automated tests across 2 test files:
+- Power BI Visuals API is fixed at 5.11.0 and build tools are fixed at 7.1.2.
+- `capabilities.json` declares an empty `privileges` array.
+- The visual makes no HTTP, HTTPS, WebSocket, telemetry, or other external resource requests.
+- User and model data are written only through safe text/attribute DOM APIs.
+- The repository contains source and tests for one visual only. Generated packages, temporary files, dependencies, and test results are not tracked.
 
-| Suite | Tests | Coverage |
-|-------|-------|----------|
-| Data Parser | 15 | Date parsing, progress clamping, missing dates, categories, tooltips, edge cases |
-| Chart Rendering | 18 | Bars, today line, grid lines, progress overlay, no NaN, title, labels, colors, edge cases |
+This repository is the complete reviewable source for the package. The visual GUID is preserved across published updates.
 
-```bash
-npm test
-```
+## Testing a Marketplace update
 
----
-
-## Tech Stack
-
-- **Power BI Visuals API** 5.3.0
-- **D3.js** for timeline rendering
-- **TypeScript** with strict mode
-- **Vitest** + happy-dom for testing
-
----
+Power BI normally loads the latest AppSource version for a published visual. To validate a local update without changing its GUID, enable **Developer mode for this session** under **File > Options and settings > Options > Current file > Report settings**, import the audited `.pbiviz`, then save the PBIX with visual version 1.0.1.0.
 
 ## License
 
-MIT License — free for personal and commercial use.
-
----
-
-## Credits
-
-Built by [Atlyn](https://github.com/garrett-hamers).
+[MIT](LICENSE)

@@ -1,10 +1,14 @@
 /**
  * Formatting settings for the Gantt Chart
  */
+import type powerbi from "powerbi-visuals-api";
 import { formattingSettings } from "powerbi-visuals-utils-formattingmodel";
 import FormattingSettingsCard = formattingSettings.SimpleCard;
 import FormattingSettingsSlice = formattingSettings.Slice;
 import FormattingSettingsModel = formattingSettings.Model;
+
+const MIN_VALIDATOR: powerbi.visuals.ValidatorType.Min = 0;
+const MAX_VALIDATOR: powerbi.visuals.ValidatorType.Max = 1;
 
 class ChartSettingsCard extends FormattingSettingsCard {
     showTodayLine = new formattingSettings.ToggleSwitch({
@@ -22,13 +26,21 @@ class ChartSettingsCard extends FormattingSettingsCard {
     barHeight = new formattingSettings.NumUpDown({
         name: "barHeight",
         displayName: "Bar Height",
-        value: 24
+        value: 24,
+        options: {
+            minValue: { type: MIN_VALIDATOR, value: 4 },
+            maxValue: { type: MAX_VALIDATOR, value: 100 }
+        }
     });
 
     barCornerRadius = new formattingSettings.NumUpDown({
         name: "barCornerRadius",
         displayName: "Bar Corner Radius",
-        value: 4
+        value: 4,
+        options: {
+            minValue: { type: MIN_VALIDATOR, value: 0 },
+            maxValue: { type: MAX_VALIDATOR, value: 50 }
+        }
     });
 
     name: string = "chartSettings";
@@ -58,7 +70,11 @@ class TitleCard extends FormattingSettingsCard {
     fontSize = new formattingSettings.NumUpDown({
         name: "fontSize",
         displayName: "Font Size",
-        value: 16
+        value: 16,
+        options: {
+            minValue: { type: MIN_VALIDATOR, value: 8 },
+            maxValue: { type: MAX_VALIDATOR, value: 72 }
+        }
     });
 
     fontColor = new formattingSettings.ColorPicker({
@@ -99,7 +115,11 @@ class DataLabelsCard extends FormattingSettingsCard {
     fontSize = new formattingSettings.NumUpDown({
         name: "fontSize",
         displayName: "Font Size",
-        value: 11
+        value: 11,
+        options: {
+            minValue: { type: MIN_VALIDATOR, value: 8 },
+            maxValue: { type: MAX_VALIDATOR, value: 40 }
+        }
     });
 
     showProgress = new formattingSettings.ToggleSwitch({
@@ -127,7 +147,11 @@ class CategoriesCard extends FormattingSettingsCard {
     fontSize = new formattingSettings.NumUpDown({
         name: "fontSize",
         displayName: "Font Size",
-        value: 11
+        value: 11,
+        options: {
+            minValue: { type: MIN_VALIDATOR, value: 8 },
+            maxValue: { type: MAX_VALIDATOR, value: 40 }
+        }
     });
 
     fontColor = new formattingSettings.ColorPicker({
@@ -221,7 +245,13 @@ class DesignCard extends FormattingSettingsCard {
     barOpacity = new formattingSettings.NumUpDown({
         name: "barOpacity",
         displayName: "Bar Opacity (%)",
-        value: 80
+        value: 80,
+        options: {
+            minValue: { type: MIN_VALIDATOR, value: 0 },
+            maxValue: { type: MAX_VALIDATOR, value: 100 },
+            unitSymbol: "%",
+            unitSymbolAfterInput: true
+        }
     });
 
     name: string = "design";

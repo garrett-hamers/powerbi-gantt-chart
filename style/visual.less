@@ -1,22 +1,37 @@
+.gantt-root {
+    min-width: 0;
+    min-height: 0;
+}
+
+.gantt-scroll-body {
+    min-width: 0;
+    min-height: 0;
+}
+
 .ganttChart {
+    display: block;
     font-family: "Segoe UI", wf_segoe-ui_normal, helvetica, arial, sans-serif;
 
     .chartContainer {
-        rect.gantt-bar {
+        .gantt-data-point {
             transition: opacity 0.2s ease;
-            cursor: pointer;
 
-            &:hover {
+            &.is-selectable {
+                cursor: pointer;
+            }
+
+            &.is-selectable:hover {
                 opacity: 0.9 !important;
             }
 
             &:focus {
-                outline: 2px solid #0078d4;
-                outline-offset: 2px;
+                outline: none;
+                stroke: #0078d4;
+                stroke-width: 2px;
             }
         }
 
-        rect.gantt-progress {
+        .gantt-progress {
             pointer-events: none;
         }
 
@@ -50,17 +65,38 @@
 
 @media screen and (-ms-high-contrast: active) {
     .ganttChart {
-        rect {
+        .gantt-data-point {
             stroke: currentColor;
-            stroke-width: 1px;
+            stroke-width: 2px;
         }
 
         line {
             stroke: currentColor !important;
         }
 
-        text {
-            fill: currentColor;
+        .data-label {
+            -ms-high-contrast-adjust: none;
+        }
+    }
+}
+
+@media (forced-colors: active) {
+    .ganttChart {
+        .gantt-data-point {
+            stroke: CanvasText;
+            stroke-width: 2px;
+
+            &:focus {
+                stroke: Highlight;
+            }
+        }
+
+        line, path.domain {
+            stroke: CanvasText !important;
+        }
+
+        .data-label {
+            forced-color-adjust: none;
         }
     }
 }

@@ -3,8 +3,8 @@
  * Renders the Gantt chart in a browser with mock data.
  * Used by Playwright for visual screenshot testing.
  */
-import * as d3 from "d3";
-import { parseDataView, ParsedData } from "../src/dataParser";
+import { select } from "d3-selection";
+import { parseDataView } from "../src/dataParser";
 import { GanttChart, GanttSettings, GanttDimensions } from "../src/ganttChart";
 
 interface ScenarioData {
@@ -75,6 +75,9 @@ function renderChart() {
     }
 
     const settings: GanttSettings = {
+        instanceId: `harness-${scenario}`,
+        interactionsEnabled: true,
+        selectionEnabled: true,
         showTodayLine: false,
         showGridLines: true,
         barHeight: 24,
@@ -82,7 +85,15 @@ function renderChart() {
         categoryColors: ["#2196F3", "#FF9800", "#4CAF50", "#9C27B0", "#F44336", "#00BCD4", "#795548", "#607D8B", "#E91E63", "#009688"],
         progressColor: "#1565C0",
         todayLineColor: "#E53935",
+        foregroundColor: "#333333",
+        gridColor: "#e0e0e0",
         barOpacity: 80,
+        highContrast: {
+            isActive: false,
+            foreground: "#000000",
+            background: "#ffffff",
+            foregroundSelected: "#ffff00"
+        },
         title: { show: true, text: `Gantt - ${scenario}`, fontSize: 16, fontColor: "#333", alignment: "left" },
         dataLabels: { show: true, fontSize: 11, showProgress: true },
         categories: { show: true, fontSize: 11, fontColor: "#333" },
@@ -94,14 +105,20 @@ function renderChart() {
 
     const dimensions: GanttDimensions = { width: 900, height: 470, margin: { top: 10, right: 30, bottom: 0, left: leftMargin } };
 
-    const headerG = d3.select("#header-svg").append("g") as any;
-    const chartG = d3.select("#chart-svg").append("g").attr("class", "chartContainer") as any;
+    const headerSvg = document.querySelector<SVGSVGElement>("#header-svg");
+    const chartSvg = document.querySelector<SVGSVGElement>("#chart-svg");
+    if (!headerSvg || !chartSvg) {
+        throw new Error("Visual harness SVG containers are missing");
+    }
+
+    const headerG = select(headerSvg).append("g");
+    const chartG = select(chartSvg).append("g").attr("class", "chartContainer");
 
     const chart = new GanttChart(chartG, parsedData, settings, dimensions, headerG);
     chart.render();
 
     if (chart.requiredHeight > 470) {
-        d3.select("#chart-svg").attr("height", chart.requiredHeight);
+        select(chartSvg).attr("height", chart.requiredHeight);
     }
 
     document.body.setAttribute("data-rendered", "true");

@@ -1,8 +1,18 @@
-/**
- * Data Parser — Parses Power BI DataView into tasks for the Gantt chart
- */
 import powerbi from "powerbi-visuals-api";
+import {
+    calculateDurationDays,
+    formatDate,
+    formatDuration,
+    formatProgress,
+    formatValue,
+    truncateText
+} from "./utils/formatting";
+
 import DataView = powerbi.DataView;
+import DataViewCategoryColumn = powerbi.DataViewCategoryColumn;
+import DataViewValueColumn = powerbi.DataViewValueColumn;
+
+export type TaskFilterValue = string | number | boolean;
 
 export interface TooltipField {
     displayName: string;
@@ -11,12 +21,20 @@ export interface TooltipField {
 
 export interface GanttTask {
     name: string;
+    filterValue: TaskFilterValue;
     startDate: Date;
     endDate: Date;
+    startDateLabel: string;
+    endDateLabel: string;
+    durationDays: number;
+    durationLabel: string;
+    isMilestone: boolean;
     progress: number;
+    progressLabel: string;
     category: string;
     tooltipFields: TooltipField[];
     rowIndex: number;
+    highlighted: boolean;
 }
 
 export interface ParsedData {
@@ -24,115 +42,139 @@ export interface ParsedData {
     categories: string[];
     minDate: Date;
     maxDate: Date;
+    hasHighlights: boolean;
+    taskQueryName: string | undefined;
 }
 
-export function parseDataView(dataView: DataView): ParsedData | null {
-    if (!dataView?.categorical?.categories || dataView.categorical.categories.length < 1 || !dataView.categorical.values) {
+export function parseDataView(dataView: DataView | null | undefined, locale: string = "en-US"): ParsedData | null {
+    const categorical = dataView?.categorical;
+    if (!categorical?.categories?.length || !categorical.values) {
         return null;
     }
 
-    const categorical = dataView.categorical;
-    const allCategories = categorical.categories;
-    const values = categorical.values;
+    let taskColumn: DataViewCategoryColumn | undefined;
+    let categoryColumn: DataViewCategoryColumn | undefined;
 
-    // Find task and category columns by role
-    let taskValues: powerbi.PrimitiveValue[] = [];
-    let categoryValues: powerbi.PrimitiveValue[] = [];
-
-    for (const cat of allCategories) {
-        const role = cat.source.roles;
-        if (role) {
-            if (role["task"]) taskValues = cat.values;
-            if (role["category"]) categoryValues = cat.values;
+    for (const column of categorical.categories) {
+        if (column.source.roles?.task) {
+            taskColumn = column;
+        }
+        if (column.source.roles?.category) {
+            categoryColumn = column;
         }
     }
 
-    if (taskValues.length === 0) {
+    if (!taskColumn?.values.length) {
         return null;
     }
 
-    // Find value columns by role
-    let startDateValues: powerbi.PrimitiveValue[] = [];
-    let endDateValues: powerbi.PrimitiveValue[] = [];
-    let progressValues: powerbi.PrimitiveValue[] = [];
-    const tooltipColumns: Array<{ displayName: string; values: powerbi.PrimitiveValue[] }> = [];
+    let startDateColumn: DataViewValueColumn | undefined;
+    let endDateColumn: DataViewValueColumn | undefined;
+    let progressColumn: DataViewValueColumn | undefined;
+    const tooltipColumns: DataViewValueColumn[] = [];
 
-    for (const valueColumn of values) {
-        const roles = valueColumn.source.roles;
-        if (roles) {
-            if (roles["startDate"]) {
-                startDateValues = valueColumn.values;
-            }
-            if (roles["endDate"]) {
-                endDateValues = valueColumn.values;
-            }
-            if (roles["progress"]) {
-                progressValues = valueColumn.values;
-            }
-            if (roles["tooltips"]) {
-                tooltipColumns.push({
-                    displayName: valueColumn.source.displayName || "Tooltip",
-                    values: valueColumn.values
-                });
-            }
+    for (const column of categorical.values) {
+        if (column.source.roles?.startDate) {
+            startDateColumn = column;
+        }
+        if (column.source.roles?.endDate) {
+            endDateColumn = column;
+        }
+        if (column.source.roles?.progress) {
+            progressColumn = column;
+        }
+        if (column.source.roles?.tooltips) {
+            tooltipColumns.push(column);
         }
     }
 
-    if (startDateValues.length === 0 || endDateValues.length === 0) {
+    if (!startDateColumn?.values.length || !endDateColumn?.values.length) {
         return null;
     }
+
+    const highlightColumns = [startDateColumn, endDateColumn, progressColumn]
+        .filter((column): column is DataViewValueColumn => column !== undefined);
+    const hasHighlights = highlightColumns.some(column => column.highlights !== undefined);
 
     const tasks: GanttTask[] = [];
-    const categorySet = new Set<string>();
-    let minDate: Date | null = null;
-    let maxDate: Date | null = null;
+    const categories = new Set<string>();
+    let minDate: Date | undefined;
+    let maxDate: Date | undefined;
 
-    for (let i = 0; i < taskValues.length; i++) {
-        const taskName = String(taskValues[i] ?? "");
-        if (!taskName) continue;
-
-        const startRaw = startDateValues[i];
-        const endRaw = endDateValues[i];
-
-        const startDate = parseDate(startRaw);
-        const endDate = parseDate(endRaw);
-
-        if (!startDate || !endDate) continue;
-        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) continue;
-
-        // Auto-swap if dates are reversed
-        const [actualStart, actualEnd] = startDate > endDate ? [endDate, startDate] : [startDate, endDate];
-
-        // Clamp progress to 0-100
-        let progress = 0;
-        if (progressValues.length > i && progressValues[i] != null) {
-            progress = Number(progressValues[i]) || 0;
-            progress = Math.max(0, Math.min(100, progress));
+    for (let rowIndex = 0; rowIndex < taskColumn.values.length; rowIndex++) {
+        const rawTask = taskColumn.values[rowIndex];
+        const filterValue = toFilterValue(rawTask);
+        if (filterValue === null || rawTask === null || rawTask === undefined) {
+            continue;
         }
 
-        const category = categoryValues.length > i ? String(categoryValues[i] ?? "") : "";
-        if (category) categorySet.add(category);
+        const taskName = truncateText(formatValue(rawTask, taskColumn.source.format, locale).trim());
+        if (!taskName) {
+            continue;
+        }
 
-        const tooltipFields = tooltipColumns
-            .map((column) => {
-                const rawValue = column.values[i];
-                if (rawValue == null || rawValue === "") return null;
-                return { displayName: column.displayName, value: String(rawValue) };
-            })
-            .filter((field): field is TooltipField => field !== null);
+        const parsedStart = parseDate(startDateColumn.values[rowIndex]);
+        const parsedEnd = parseDate(endDateColumn.values[rowIndex]);
+        if (!parsedStart || !parsedEnd) {
+            continue;
+        }
+
+        const datesAreReversed = parsedStart.getTime() > parsedEnd.getTime();
+        const actualStart = datesAreReversed ? parsedEnd : parsedStart;
+        const actualEnd = datesAreReversed ? parsedStart : parsedEnd;
+        const startFormat = datesAreReversed ? endDateColumn.source.format : startDateColumn.source.format;
+        const endFormat = datesAreReversed ? startDateColumn.source.format : endDateColumn.source.format;
+
+        const progress = normalizeProgress(
+            progressColumn?.values[rowIndex],
+            progressColumn?.source.format
+        );
+        const category = formatCategory(categoryColumn, rowIndex, locale);
+        if (category) {
+            categories.add(category);
+        }
+
+        const durationDays = calculateDurationDays(actualStart, actualEnd);
+        const tooltipFields = tooltipColumns.flatMap(column => {
+            const value = column.values[rowIndex];
+            if (value === null || value === undefined || value === "") {
+                return [];
+            }
+
+            return [{
+                displayName: truncateText(column.source.displayName || "Tooltip"),
+                value: formatValue(value, column.source.format, locale)
+            }];
+        });
+        const highlighted = !hasHighlights || highlightColumns.some(
+            column => column.highlights?.[rowIndex] !== null
+                && column.highlights?.[rowIndex] !== undefined
+        );
 
         tasks.push({
             name: taskName,
+            filterValue,
             startDate: actualStart,
             endDate: actualEnd,
+            startDateLabel: formatDate(actualStart, startFormat, locale),
+            endDateLabel: formatDate(actualEnd, endFormat, locale),
+            durationDays,
+            durationLabel: formatDuration(durationDays, locale),
+            isMilestone: actualStart.getTime() === actualEnd.getTime(),
             progress,
+            progressLabel: formatProgress(progress, progressColumn?.source.format, locale),
             category,
             tooltipFields,
-            rowIndex: i
+            rowIndex,
+            highlighted
         });
 
-        if (!minDate || actualStart < minDate) minDate = actualStart;
-        if (!maxDate || actualEnd > maxDate) maxDate = actualEnd;
+        if (!minDate || actualStart.getTime() < minDate.getTime()) {
+            minDate = actualStart;
+        }
+        if (!maxDate || actualEnd.getTime() > maxDate.getTime()) {
+            maxDate = actualEnd;
+        }
     }
 
     if (tasks.length === 0 || !minDate || !maxDate) {
@@ -141,16 +183,100 @@ export function parseDataView(dataView: DataView): ParsedData | null {
 
     return {
         tasks,
-        categories: Array.from(categorySet),
+        categories: Array.from(categories),
         minDate,
-        maxDate
+        maxDate,
+        hasHighlights,
+        taskQueryName: taskColumn.source.queryName
     };
 }
 
-function parseDate(value: powerbi.PrimitiveValue): Date | null {
-    if (value == null) return null;
-    if (value instanceof Date) return value;
-    const d = new Date(value as any);
-    if (isNaN(d.getTime())) return null;
-    return d;
+function formatCategory(
+    categoryColumn: DataViewCategoryColumn | undefined,
+    rowIndex: number,
+    locale: string
+): string {
+    if (!categoryColumn) {
+        return "";
+    }
+
+    const value = categoryColumn.values[rowIndex];
+    if (value === null || value === undefined || value === "") {
+        return "";
+    }
+
+    return truncateText(formatValue(value, categoryColumn.source.format, locale).trim());
+}
+
+function normalizeProgress(value: powerbi.PrimitiveValue | undefined, format: string | undefined): number {
+    if (value === null || value === undefined || value === "") {
+        return 0;
+    }
+
+    const numericValue = typeof value === "number" ? value : Number(value);
+    if (!Number.isFinite(numericValue)) {
+        return 0;
+    }
+
+    const normalizedValue = format?.includes("%") && Math.abs(numericValue) <= 1
+        ? numericValue * 100
+        : numericValue;
+    return Math.min(100, Math.max(0, normalizedValue));
+}
+
+function toFilterValue(value: powerbi.PrimitiveValue | undefined): TaskFilterValue | null {
+    if (typeof value === "string" || typeof value === "boolean") {
+        return value;
+    }
+    if (typeof value === "number") {
+        return Number.isFinite(value) ? value : null;
+    }
+    if (value instanceof Date && Number.isFinite(value.getTime())) {
+        return value.toISOString();
+    }
+
+    return null;
+}
+
+function parseDate(value: powerbi.PrimitiveValue | undefined): Date | null {
+    let parsed: Date;
+
+    if (value instanceof Date) {
+        parsed = new Date(value.getTime());
+    } else if (typeof value === "number" && Number.isFinite(value)) {
+        parsed = new Date(value);
+    } else if (typeof value === "string") {
+        const text = value.trim();
+        if (!text) {
+            return null;
+        }
+
+        const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+        if (dateOnly) {
+            const year = Number(dateOnly[1]);
+            const month = Number(dateOnly[2]);
+            const day = Number(dateOnly[3]);
+            parsed = new Date(0);
+            parsed.setFullYear(year, month - 1, day);
+            parsed.setHours(0, 0, 0, 0);
+            if (
+                parsed.getFullYear() !== year
+                || parsed.getMonth() !== month - 1
+                || parsed.getDate() !== day
+            ) {
+                return null;
+            }
+        } else {
+            parsed = new Date(text);
+        }
+    } else {
+        return null;
+    }
+
+    const year = parsed.getFullYear();
+    if (!Number.isFinite(parsed.getTime()) || year < 1 || year > 9999) {
+        return null;
+    }
+
+    return parsed;
 }

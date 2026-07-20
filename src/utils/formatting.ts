@@ -1,64 +1,88 @@
-/**
- * Formatting utilities for numbers and labels
- */
+import powerbi from "powerbi-visuals-api";
+import { valueFormatter } from "powerbi-visuals-utils-formattingutils";
 
-export type NumberScale = "none" | "thousands" | "millions" | "billions" | "auto";
+const DAY_IN_MILLISECONDS = 86_400_000;
+const MAX_DISPLAY_TEXT_LENGTH = 512;
 
-export interface FormatOptions {
-    scale: NumberScale;
-    decimals: number;
-    prefix: string;
-    suffix: string;
-    showSign: boolean;
-    negativeFormat: "minus" | "parentheses";
-}
-
-const DEFAULT_FORMAT: FormatOptions = {
-    scale: "auto",
-    decimals: 1,
-    prefix: "",
-    suffix: "",
-    showSign: false,
-    negativeFormat: "minus"
-};
-
-export function formatNumber(value: number, options: Partial<FormatOptions> = {}): string {
-    const opts = { ...DEFAULT_FORMAT, ...options };
-    let scaledValue = value;
-    let scaleSuffix = "";
-    const absValue = Math.abs(value);
-
-    if (opts.scale === "auto") {
-        if (absValue >= 1_000_000_000) { scaledValue = value / 1_000_000_000; scaleSuffix = "B"; }
-        else if (absValue >= 1_000_000) { scaledValue = value / 1_000_000; scaleSuffix = "M"; }
-        else if (absValue >= 1_000) { scaledValue = value / 1_000; scaleSuffix = "K"; }
-    } else if (opts.scale === "thousands") { scaledValue = value / 1_000; scaleSuffix = "K"; }
-    else if (opts.scale === "millions") { scaledValue = value / 1_000_000; scaleSuffix = "M"; }
-    else if (opts.scale === "billions") { scaledValue = value / 1_000_000_000; scaleSuffix = "B"; }
-
-    let formatted = scaledValue.toFixed(opts.decimals);
-    if (opts.decimals > 0) {
-        formatted = parseFloat(formatted).toString();
-        if (formatted.includes('.')) {
-            const parts = formatted.split('.');
-            formatted = parts[0] + '.' + parts[1].padEnd(opts.decimals, '0').slice(0, opts.decimals);
-        }
+export function clampNumber(value: number, minimum: number, maximum: number, fallback: number): number {
+    if (!Number.isFinite(value)) {
+        return fallback;
     }
 
-    if (opts.showSign && value > 0) formatted = "+" + formatted;
-    if (opts.negativeFormat === "parentheses" && value < 0) {
-        formatted = formatted.replace("-", "");
-        return `${opts.prefix}(${formatted}${scaleSuffix})${opts.suffix}`;
+    return Math.min(maximum, Math.max(minimum, value));
+}
+
+export function truncateText(text: string, maxLength: number = MAX_DISPLAY_TEXT_LENGTH): string {
+    if (text.length <= maxLength) {
+        return text;
     }
-    return `${opts.prefix}${formatted}${scaleSuffix}${opts.suffix}`;
+
+    return `${text.slice(0, Math.max(0, maxLength - 1))}\u2026`;
 }
 
-export function formatPercent(value: number, decimals: number = 1, showSign: boolean = true): string {
-    const sign = showSign && value > 0 ? "+" : "";
-    return `${sign}${value.toFixed(decimals)}%`;
+export function formatValue(
+    value: powerbi.PrimitiveValue | Date,
+    format: string | undefined,
+    locale: string
+): string {
+    return truncateText(valueFormatter.format(value, format, true, locale));
 }
 
-export function truncateText(text: string, maxLength: number): string {
-    if (text.length <= maxLength) return text;
-    return text.slice(0, maxLength - 1) + "…";
+export function formatDate(value: Date, format: string | undefined, locale: string): string {
+    return formatValue(value, format || valueFormatter.DefaultDateFormat, locale);
+}
+
+export function formatProgress(progress: number, format: string | undefined, locale: string): string {
+    const usesPercentFormat = format?.includes("%") ?? false;
+    const formatted = valueFormatter.format(
+        usesPercentFormat ? progress / 100 : progress,
+        format || "0.##",
+        true,
+        locale
+    );
+
+    return usesPercentFormat ? formatted : `${formatted}%`;
+}
+
+export function calculateDurationDays(startDate: Date, endDate: Date): number {
+    const startsAtMidnight = startDate.getHours() === 0
+        && startDate.getMinutes() === 0
+        && startDate.getSeconds() === 0
+        && startDate.getMilliseconds() === 0;
+    const endsAtMidnight = endDate.getHours() === 0
+        && endDate.getMinutes() === 0
+        && endDate.getSeconds() === 0
+        && endDate.getMilliseconds() === 0;
+
+    if (startsAtMidnight && endsAtMidnight) {
+        const startUtc = getUtcCalendarDate(startDate);
+        const endUtc = getUtcCalendarDate(endDate);
+        return (endUtc - startUtc) / DAY_IN_MILLISECONDS;
+    }
+
+    return (endDate.getTime() - startDate.getTime()) / DAY_IN_MILLISECONDS;
+}
+
+export function formatDuration(durationDays: number, locale: string): string {
+    if (durationDays === 0) {
+        return "Milestone";
+    }
+
+    const formatter = new Intl.NumberFormat(locale, {
+        maximumFractionDigits: Number.isInteger(durationDays) ? 0 : 2
+    });
+    const formattedDays = formatter.format(durationDays);
+    return `${formattedDays} ${durationDays === 1 ? "day" : "days"}`;
+}
+
+export function sanitizeInstanceId(instanceId: string): string {
+    const sanitized = instanceId.replace(/[^A-Za-z0-9_-]/g, "_");
+    return `gantt-${sanitized || "visual"}`;
+}
+
+function getUtcCalendarDate(value: Date): number {
+    const utcDate = new Date(0);
+    utcDate.setUTCFullYear(value.getFullYear(), value.getMonth(), value.getDate());
+    utcDate.setUTCHours(0, 0, 0, 0);
+    return utcDate.getTime();
 }
