@@ -88,7 +88,6 @@ function renderVisual(): void {
         type: 2
     } as VisualUpdateOptions;
 
-    target.style.background = host.colorPalette.background.value;
     visual.update(updateOptions);
     document.body.dataset.renderer = "production-visual";
 }

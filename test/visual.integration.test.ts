@@ -528,6 +528,10 @@ describe("Gantt Visual integration", () => {
         const firstDataPoint = highContrastElement.querySelector<SVGGraphicsElement>(".gantt-data-point");
         expect(firstDataPoint?.getAttribute("fill")).toBe("#000000");
         expect(firstDataPoint?.getAttribute("stroke")).toBe("#ffffff");
+        expect(highContrastElement.style.backgroundColor).toBe("#000000");
+        expect(highContrastElement.style.color).toBe("#ffffff");
+        expect(highContrastElement.style.getPropertyValue("--gantt-background-color")).toBe("#000000");
+        expect(highContrastElement.style.getPropertyValue("--gantt-foreground-color")).toBe("#ffffff");
 
         highContrastHarness.invokeSelectionCallback([createSelectionId(0)]);
         expect(firstDataPoint?.getAttribute("stroke")).toBe("#ffff00");

@@ -54,6 +54,65 @@ test.describe("production Gantt visual", () => {
         await expect(firstDataPoint).toHaveAttribute("stroke", "#ffffff");
         await firstDataPoint.click();
         await expect(firstDataPoint).toHaveAttribute("stroke", "#ffff00");
+
+        const contrast = await page.evaluate(() => {
+            const requiredElement = (selector: string): Element => {
+                const element = document.querySelector(selector);
+                if (!element) {
+                    throw new Error(`Missing contrast-test element: ${selector}`);
+                }
+                return element;
+            };
+            const parseColor = (value: string): [number, number, number] => {
+                const match = /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/.exec(value);
+                if (!match) {
+                    throw new Error(`Unsupported computed color: ${value}`);
+                }
+                return [Number(match[1]), Number(match[2]), Number(match[3])];
+            };
+            const luminance = (color: string): number => {
+                const channels = parseColor(color).map(channel => {
+                    const normalized = channel / 255;
+                    return normalized <= 0.04045
+                        ? normalized / 12.92
+                        : Math.pow((normalized + 0.055) / 1.055, 2.4);
+                });
+                return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+            };
+            const ratio = (foreground: string, background: string): number => {
+                const foregroundLuminance = luminance(foreground);
+                const backgroundLuminance = luminance(background);
+                const lighter = Math.max(foregroundLuminance, backgroundLuminance);
+                const darker = Math.min(foregroundLuminance, backgroundLuminance);
+                return (lighter + 0.05) / (darker + 0.05);
+            };
+            const computed = (selector: string, property: "fill" | "stroke" | "backgroundColor"): string => {
+                const style = getComputedStyle(requiredElement(selector));
+                return style[property];
+            };
+
+            const rootBackground = computed(".gantt-root", "backgroundColor");
+            const progressFill = computed(".gantt-progress", "fill");
+            return {
+                rootBackground,
+                title: ratio(computed(".chart-title", "fill"), rootBackground),
+                axis: ratio(computed(".x-axis text", "fill"), rootBackground),
+                task: ratio(computed(".y-label", "fill"), rootBackground),
+                legend: ratio(computed(".legend text", "fill"), rootBackground),
+                dataLabel: ratio(computed(".data-label", "fill"), progressFill),
+                selectedOutline: ratio(
+                    computed(".gantt-data-point", "stroke"),
+                    rootBackground
+                )
+            };
+        });
+        expect(contrast.rootBackground).toBe("rgb(0, 0, 0)");
+        expect(contrast.title).toBeGreaterThanOrEqual(4.5);
+        expect(contrast.axis).toBeGreaterThanOrEqual(4.5);
+        expect(contrast.task).toBeGreaterThanOrEqual(4.5);
+        expect(contrast.legend).toBeGreaterThanOrEqual(4.5);
+        expect(contrast.dataLabel).toBeGreaterThanOrEqual(4.5);
+        expect(contrast.selectedOutline).toBeGreaterThanOrEqual(3);
         await expect(page.locator("#visual-container")).toHaveScreenshot("gantt-forced-colors.png");
     });
 });

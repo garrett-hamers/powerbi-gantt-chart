@@ -33,7 +33,7 @@ describe("Power BI certification metadata", () => {
         const packageLock = readJson<PackageLock>("package-lock.json");
         const visualManifest = readJson<VisualManifest>("pbiviz.json");
 
-        expect(packageManifest.version).toBe("1.0.3.0");
+        expect(packageManifest.version).toBe("1.0.4.0");
         expect(packageManifest.dependencies["powerbi-visuals-api"]).toBe("5.11.1");
         expect(packageManifest.devDependencies["powerbi-visuals-tools"]).toBe("7.2.0");
         expect(packageManifest.scripts.eslint).toBe("npx eslint . --ext .js,.jsx,.ts,.tsx");
@@ -55,8 +55,8 @@ describe("Power BI certification metadata", () => {
             { cwd: repositoryRoot, encoding: "utf8" }
         )).toBe("5.11.0");
         expect(visualManifest.apiVersion).toBe("5.11.1");
-        expect(visualManifest.visual.version).toBe("1.0.3.0");
-        expect(visualManifest.version).toBe("1.0.3.0");
+        expect(visualManifest.visual.version).toBe("1.0.4.0");
+        expect(visualManifest.version).toBe("1.0.4.0");
         expect(visualManifest.visual.guid).toBe("ganttChartATLYN7F3A9D2B5E1C8046");
         expect(visualManifest.externalJS).toEqual([]);
         expect(visualManifest.visual.gitHubUrl)
@@ -141,7 +141,7 @@ describe("Power BI certification metadata", () => {
         expect(harnessHtml).not.toContain(".gantt-bar");
         expect(packageManifest.scripts["test:visual:build"]).toContain("lessc style/visual.less");
         expect(packageManifest.devDependencies.less).toBe("4.6.4");
-        expect(productionStyles).toContain("forced-color-adjust: none");
+        expect(productionStyles).toMatch(/\.gantt-root\s*\{[\s\S]*forced-color-adjust: none/);
         expect(productionStyles).not.toContain("@media (forced-colors:");
         expect(productionStyles).not.toContain("-ms-high-contrast: active");
     });

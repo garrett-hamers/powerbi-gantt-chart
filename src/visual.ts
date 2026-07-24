@@ -264,7 +264,7 @@ export class Visual implements IVisual {
         const categoryFontColor = this.hasFormattingProperty("categories", "fontColor")
             ? this.formattingSettings.categoriesCard.fontColor.value.value
             : foregroundColor;
-        this.target.style.setProperty("--gantt-focus-color", focusColor);
+        this.applyHostColorBoundary(foregroundColor, backgroundColor, focusColor);
 
         return {
             instanceId: this.host.instanceId || "visual",
@@ -325,6 +325,18 @@ export class Visual implements IVisual {
         return object !== undefined
             && object !== null
             && Object.prototype.hasOwnProperty.call(object, propertyName);
+    }
+
+    private applyHostColorBoundary(
+        foregroundColor: string,
+        backgroundColor: string,
+        focusColor: string
+    ): void {
+        this.target.style.setProperty("--gantt-foreground-color", foregroundColor);
+        this.target.style.setProperty("--gantt-background-color", backgroundColor);
+        this.target.style.setProperty("--gantt-focus-color", focusColor);
+        this.target.style.color = foregroundColor;
+        this.target.style.backgroundColor = backgroundColor;
     }
 
     private createSelectionIds(): void {
@@ -725,6 +737,8 @@ export class Visual implements IVisual {
         const palette = this.host.colorPalette;
         const foreground = palette.foreground?.value || "#333333";
         const background = palette.background?.value || "#ffffff";
+        const focus = palette.foregroundSelected?.value || foreground;
+        this.applyHostColorBoundary(foreground, background, focus);
         const centerX = width / 2;
         const centerY = height / 2;
 

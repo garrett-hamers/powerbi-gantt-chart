@@ -4,7 +4,7 @@ A free, open-source Power BI custom visual for project timelines, milestones, pr
 
 ![Power BI](https://img.shields.io/badge/Power_BI-API_5.11.1-yellow)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![Version](https://img.shields.io/badge/Version-1.0.3.0-blue)
+![Version](https://img.shields.io/badge/Version-1.0.4.0-blue)
 
 ## Features
 
@@ -65,7 +65,7 @@ This repository is the complete reviewable source for the package. The visual GU
 
 ## Testing a Marketplace update
 
-Power BI normally loads the latest AppSource version for a published visual. To validate a local update without changing its GUID, enable **Developer mode for this session** under **File > Options and settings > Options > Current file > Report settings**, import the audited `.pbiviz`, then save the PBIX with visual version 1.0.3.0.
+Power BI normally loads the latest AppSource version for a published visual. To validate a local update without changing its GUID, enable **Developer mode for this session** under **File > Options and settings > Options > Current file > Report settings**, import the audited `.pbiviz`, then save the PBIX with visual version 1.0.4.0.
 
 ## License
 
