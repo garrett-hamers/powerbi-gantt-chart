@@ -1,7 +1,7 @@
 {
     "name": "gantt-chart-visual",
     "description": "Atlyn Gantt Chart for Power BI",
-    "version": "1.0.2.0",
+    "version": "1.0.3.0",
     "repository": {
         "type": "git",
         "url": "https://github.com/garrett-hamers/powerbi-gantt-chart"
@@ -18,7 +18,8 @@
         "test:watch": "vitest",
         "test:visual:build": "node -e \"require('fs').mkdirSync('.tmp',{recursive:true})\" && npx lessc style/visual.less .tmp/visual-harness.css && npx esbuild test/visual-harness-entry.ts --bundle --outfile=.tmp/visual-harness-bundle.js --format=iife --target=es2020 --loader:.less=empty",
         "test:visual": "npm run test:visual:build && npx playwright test --config=playwright.config.ts",
-        "test:visual:update": "npm run test:visual:build && npx playwright test --config=playwright.config.ts --update-snapshots"
+        "test:visual:update": "npm run test:visual:build && npx playwright test --config=playwright.config.ts --update-snapshots",
+        "validate:certification": "npm audit --audit-level=moderate && npm run eslint && npx tsc --noEmit && npm test && npm run test:visual && npm run package"
     },
     "dependencies": {
         "d3-axis": "3.0.0",

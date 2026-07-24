@@ -4,7 +4,7 @@ A free, open-source Power BI custom visual for project timelines, milestones, pr
 
 ![Power BI](https://img.shields.io/badge/Power_BI-API_5.11.1-yellow)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![Version](https://img.shields.io/badge/Version-1.0.2.0-blue)
+![Version](https://img.shields.io/badge/Version-1.0.3.0-blue)
 
 ## Features
 
@@ -48,13 +48,10 @@ Requirements: Node.js 20.19 or newer and npm supported by `powerbi-visuals-tools
 
 ```powershell
 npm ci
-npm run eslint
-npm test
-npm run test:visual
-npm run package
+npm run validate:certification
 ```
 
-`npm run package` invokes `pbiviz package --certification-audit`. Build output is intentionally excluded from source control; use the audited `.pbiviz` produced in `dist`.
+`npm run validate:certification` starts with `npm audit --audit-level=moderate` and stops on any nonzero result before running lint, type checking, unit/integration tests, production browser tests, and `pbiviz package --certification-audit`. Build output is intentionally excluded from source control; use the audited `.pbiviz` produced in `dist`.
 
 ## Certification and privacy
 
@@ -68,7 +65,7 @@ This repository is the complete reviewable source for the package. The visual GU
 
 ## Testing a Marketplace update
 
-Power BI normally loads the latest AppSource version for a published visual. To validate a local update without changing its GUID, enable **Developer mode for this session** under **File > Options and settings > Options > Current file > Report settings**, import the audited `.pbiviz`, then save the PBIX with visual version 1.0.2.0.
+Power BI normally loads the latest AppSource version for a published visual. To validate a local update without changing its GUID, enable **Developer mode for this session** under **File > Options and settings > Options > Current file > Report settings**, import the audited `.pbiviz`, then save the PBIX with visual version 1.0.3.0.
 
 ## License
 
