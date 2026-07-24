@@ -2,9 +2,9 @@
 
 A free, open-source Power BI custom visual for project timelines, milestones, progress, categories, and report interactions.
 
-![Power BI](https://img.shields.io/badge/Power_BI-API_5.11-yellow)
+![Power BI](https://img.shields.io/badge/Power_BI-API_5.11.1-yellow)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![Version](https://img.shields.io/badge/Version-1.0.1.0-blue)
+![Version](https://img.shields.io/badge/Version-1.0.2.0-blue)
 
 ## Features
 
@@ -44,7 +44,7 @@ A free, open-source Power BI custom visual for project timelines, milestones, pr
 
 ## Development
 
-Requirements: Node.js and npm supported by `powerbi-visuals-tools` 7.1.2.
+Requirements: Node.js 20.19 or newer and npm supported by `powerbi-visuals-tools` 7.2.0.
 
 ```powershell
 npm ci
@@ -58,7 +58,7 @@ npm run package
 
 ## Certification and privacy
 
-- Power BI Visuals API is fixed at 5.11.0 and build tools are fixed at 7.1.2.
+- Power BI Visuals API is fixed at 5.11.1 and build tools are fixed at 7.2.0.
 - `capabilities.json` declares an empty `privileges` array.
 - The visual makes no HTTP, HTTPS, WebSocket, telemetry, or other external resource requests.
 - User and model data are written only through safe text/attribute DOM APIs.
@@ -68,7 +68,7 @@ This repository is the complete reviewable source for the package. The visual GU
 
 ## Testing a Marketplace update
 
-Power BI normally loads the latest AppSource version for a published visual. To validate a local update without changing its GUID, enable **Developer mode for this session** under **File > Options and settings > Options > Current file > Report settings**, import the audited `.pbiviz`, then save the PBIX with visual version 1.0.1.0.
+Power BI normally loads the latest AppSource version for a published visual. To validate a local update without changing its GUID, enable **Developer mode for this session** under **File > Options and settings > Options > Current file > Report settings**, import the audited `.pbiviz`, then save the PBIX with visual version 1.0.2.0.
 
 ## License
 

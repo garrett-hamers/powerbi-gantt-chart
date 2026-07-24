@@ -33,16 +33,24 @@ describe("Power BI certification metadata", () => {
         const packageLock = readJson<PackageLock>("package-lock.json");
         const visualManifest = readJson<VisualManifest>("pbiviz.json");
 
-        expect(packageManifest.version).toBe("1.0.1.0");
-        expect(packageManifest.dependencies["powerbi-visuals-api"]).toBe("5.11.0");
-        expect(packageManifest.devDependencies["powerbi-visuals-tools"]).toBe("7.1.2");
+        expect(packageManifest.version).toBe("1.0.2.0");
+        expect(packageManifest.dependencies["powerbi-visuals-api"]).toBe("5.11.1");
+        expect(packageManifest.devDependencies["powerbi-visuals-tools"]).toBe("7.2.0");
         expect(packageManifest.scripts.eslint).toBe("npx eslint . --ext .js,.jsx,.ts,.tsx");
-        expect(packageManifest.scripts.package).toBe("pbiviz package --certification-audit");
-        expect(packageLock.packages["node_modules/powerbi-visuals-api"]?.version).toBe("5.11.0");
-        expect(packageLock.packages["node_modules/powerbi-visuals-tools"]?.version).toBe("7.1.2");
-        expect(visualManifest.apiVersion).toBe("5.11.0");
-        expect(visualManifest.visual.version).toBe("1.0.1.0");
-        expect(visualManifest.version).toBe("1.0.1.0");
+        expect(packageManifest.scripts["clean:package"])
+            .toBe("node -e \"for(const path of ['dist','.tmp'])require('fs').rmSync(path,{recursive:true,force:true})\"");
+        expect(packageManifest.scripts.package)
+            .toBe("npm run clean:package && pbiviz package --certification-audit");
+        expect(packageLock.packages["node_modules/powerbi-visuals-api"]?.version).toBe("5.11.1");
+        expect(packageLock.packages["node_modules/powerbi-visuals-tools"]?.version).toBe("7.2.0");
+        expect(execFileSync(
+            process.execPath,
+            ["-e", "process.stdout.write(require('powerbi-visuals-api').version)"],
+            { cwd: repositoryRoot, encoding: "utf8" }
+        )).toBe("5.11.0");
+        expect(visualManifest.apiVersion).toBe("5.11.1");
+        expect(visualManifest.visual.version).toBe("1.0.2.0");
+        expect(visualManifest.version).toBe("1.0.2.0");
         expect(visualManifest.visual.guid).toBe("ganttChartATLYN7F3A9D2B5E1C8046");
         expect(visualManifest.externalJS).toEqual([]);
         expect(visualManifest.visual.gitHubUrl)
