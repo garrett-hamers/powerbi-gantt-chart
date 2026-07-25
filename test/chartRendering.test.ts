@@ -170,7 +170,8 @@ describe("Gantt chart rendering", () => {
 
     it("data labels render when enabled", () => {
         new GanttChart(container, sampleData(), defaultSettings(), defaultDimensions()).render();
-        expect(container.selectAll(".data-label").size()).toBe(4);
+        expect(container.selectAll(".data-label-base").size()).toBe(4);
+        expect(container.selectAll(".data-label-progress").size()).toBe(3);
     });
 
     it("data labels hidden when disabled", () => {
@@ -182,7 +183,7 @@ describe("Gantt chart rendering", () => {
     it("data labels include progress percentage when showProgress is true", () => {
         new GanttChart(container, sampleData(), defaultSettings(), defaultDimensions()).render();
         const labels: string[] = [];
-        container.selectAll(".data-label").each(function() {
+        container.selectAll(".data-label-base").each(function() {
             labels.push(select(this).text());
         });
         // Design has 100% progress
@@ -198,7 +199,7 @@ describe("Gantt chart rendering", () => {
         }))!;
 
         new GanttChart(container, data, defaultSettings(), defaultDimensions()).render();
-        const labels = container.selectAll<SVGTextElement, GanttTask>(".data-label").nodes()
+        const labels = container.selectAll<SVGTextElement, GanttTask>(".data-label-base").nodes()
             .map(label => label.textContent);
         const ariaLabels = container.selectAll<SVGGraphicsElement, GanttTask>(".gantt-data-point").nodes()
             .map(dataPoint => dataPoint.getAttribute("aria-label"));
@@ -252,7 +253,38 @@ describe("Gantt chart rendering", () => {
         expect(firstBar.attr("stroke")).toBe("#ffffff");
         expect(firstBar.attr("stroke-width")).toBe("2");
         expect(container.select(".x-axis text").attr("fill")).toBe("#ffffff");
-        expect(container.select(".data-label").attr("fill")).toBe("#000000");
+        expect(container.select(".data-label-base").attr("fill")).toBe("#ffffff");
+        expect(container.select(".data-label-progress").attr("fill")).toBe("#000000");
+    });
+
+    it("uses accessible high-contrast opacity for cross-highlighted rows", () => {
+        const data = parseDataView(buildMockDataView({
+            tasks: ["Dim", "Keep"],
+            startDates: ["2024-01-01", "2024-02-01"],
+            endDates: ["2024-01-31", "2024-02-28"],
+            progress: [50, 50],
+            highlights: {
+                startDates: [null, "2024-02-01"]
+            }
+        }))!;
+        const settings = defaultSettings({
+            highContrast: {
+                isActive: true,
+                foreground: "#ffffff",
+                background: "#000000",
+                foregroundSelected: "#ffff00"
+            }
+        });
+
+        new GanttChart(container, data, settings, defaultDimensions()).render();
+        const barOpacity = container.selectAll<SVGGraphicsElement, unknown>(".gantt-data-point")
+            .nodes()
+            .map(element => Number(element.getAttribute("opacity")));
+        const progressOpacity = container.selectAll<SVGRectElement, unknown>(".gantt-progress")
+            .nodes()
+            .map(element => Number(element.getAttribute("opacity")));
+        expect(barOpacity).toEqual([0.6, 1]);
+        expect(progressOpacity).toEqual([0.6, 1]);
     });
 });
 
@@ -335,6 +367,29 @@ describe("Edge cases", () => {
         const progressWidth = parseFloat(container.select("rect.gantt-progress").attr("width"));
         // Progress should be approximately half the bar width
         expect(progressWidth).toBeCloseTo(barWidth * 0.5, 0);
+    });
+
+    it("matches large rounded label clips to partial-progress geometry", () => {
+        const data = parseDataView(buildMockDataView({
+            tasks: ["Rounded partial progress"],
+            startDates: ["2024-01-01"],
+            endDates: ["2024-04-01"],
+            progress: [10]
+        }))!;
+        const settings = defaultSettings({ barHeight: 32, barCornerRadius: 16 });
+
+        new GanttChart(container, data, settings, defaultDimensions()).render();
+        const progress = container.select<SVGRectElement>(".gantt-progress");
+        const progressLabel = container.select<SVGTextElement>(".data-label-progress");
+        const baseLabel = container.select<SVGTextElement>(".data-label-base");
+        const clipRadius = (label: Selection<SVGTextElement, unknown, null, undefined>): string => {
+            const clipId = /url\(#([^)]+)\)/.exec(label.attr("clip-path"))?.[1];
+            return clipId ? container.select(`#${clipId} rect`).attr("rx") : "";
+        };
+
+        expect(progress.attr("rx")).toBe("16");
+        expect(clipRadius(progressLabel)).toBe("16");
+        expect(clipRadius(baseLabel)).toBe("16");
     });
 
     it("reports enough height for thousands-style scrolling without invalid geometry", () => {

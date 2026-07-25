@@ -149,8 +149,13 @@ export class GanttChart {
             return getCategoryColor(categoryIndex ?? 0, this.settings.categoryColors);
         };
         const opacityForTask = (task: GanttTask): number => {
-            const baseOpacity = this.settings.barOpacity / 100;
-            return this.data.hasHighlights && !task.highlighted ? Math.min(baseOpacity, 0.3) : baseOpacity;
+            const baseOpacity = this.settings.highContrast.isActive
+                ? 1
+                : this.settings.barOpacity / 100;
+            const dimmedOpacity = this.settings.highContrast.isActive
+                ? 0.6
+                : Math.min(baseOpacity, 0.3);
+            return this.data.hasHighlights && !task.highlighted ? dimmedOpacity : baseOpacity;
         };
 
         this.renderTaskBars(yScale, xScale, barHeight, rowPositionByDataIndex, colorForTask, opacityForTask);
@@ -436,6 +441,10 @@ export class GanttChart {
         }
 
         const regularTasks = this.data.tasks.filter(task => !task.isMilestone);
+        const progressTasks = regularTasks.filter(
+            (task): task is GanttTask & { progress: number } =>
+                task.progress !== null && task.progress > 0
+        );
         const definitions = this.container.append("defs").attr("aria-hidden", "true");
         const clips = definitions.selectAll<SVGClipPathElement, GanttTask>("clipPath")
             .data(regularTasks)
@@ -447,66 +456,112 @@ export class GanttChart {
             .attr("x", task => xScale(task.startDate))
             .attr("y", task => this.rowTop(task, yScale, rowPositionByDataIndex, barHeight))
             .attr("width", task => Math.max(1, xScale(task.endDate) - xScale(task.startDate)))
-            .attr("height", barHeight);
+            .attr("height", barHeight)
+            .attr("rx", this.settings.barCornerRadius);
 
-        this.container.selectAll<SVGTextElement, GanttTask>("text.data-label")
+        const progressClips = definitions
+            .selectAll<SVGClipPathElement, GanttTask & { progress: number }>("clipPath.progress")
+            .data(progressTasks)
+            .enter()
+            .append("clipPath")
+            .attr("id", task => this.progressClipId(task));
+
+        progressClips.append("rect")
+            .attr("x", task => xScale(task.startDate))
+            .attr("y", task => this.rowTop(task, yScale, rowPositionByDataIndex, barHeight))
+            .attr("width", task => {
+                const fullWidth = Math.max(1, xScale(task.endDate) - xScale(task.startDate));
+                return fullWidth * (task.progress / 100);
+            })
+            .attr("height", barHeight)
+            .attr("rx", this.settings.barCornerRadius);
+
+        this.container.selectAll<SVGTextElement, GanttTask>("text.data-label-base")
             .data(this.data.tasks)
             .enter()
             .append("text")
-            .attr("class", "data-label")
+            .attr("class", "data-label data-label-base")
+            .attr("data-dp-index", task => String(task.rowIndex))
             .attr("clip-path", task => task.isMilestone ? null : `url(#${this.clipId(task)})`)
             .attr("x", task => xScale(task.startDate) + (task.isMilestone ? barHeight / 2 + 4 : 4))
             .attr("y", task => this.rowCenter(task, yScale, rowPositionByDataIndex))
             .attr("dy", "0.35em")
             .attr("font-size", `${this.settings.dataLabels.fontSize}px`)
-            .attr("fill", task => this.getDataLabelColor(task, colorForTask))
-            .attr("stroke", task => this.getDataLabelOutlineColor(task, colorForTask))
+            .attr("fill", task => this.getBaseDataLabelColor(task, colorForTask))
+            .attr("stroke", task => this.getBaseDataLabelOutlineColor(task, colorForTask))
             .attr("stroke-width", 1.5)
             .attr("stroke-linejoin", "round")
             .style("paint-order", "stroke")
             .attr("aria-hidden", "true")
-            .text(task => {
-                const label = task.category || task.name;
-                return this.settings.dataLabels.showProgress && task.progressLabel !== null
-                    ? `${label} (${task.progressLabel})`
-                    : label;
-            });
+            .text(task => this.getDataLabelText(task));
+
+        this.container
+            .selectAll<SVGTextElement, GanttTask & { progress: number }>("text.data-label-progress")
+            .data(progressTasks)
+            .enter()
+            .append("text")
+            .attr("class", "data-label data-label-progress")
+            .attr("data-dp-index", task => String(task.rowIndex))
+            .attr("clip-path", task => `url(#${this.progressClipId(task)})`)
+            .attr("x", task => xScale(task.startDate) + 4)
+            .attr("y", task => this.rowCenter(task, yScale, rowPositionByDataIndex))
+            .attr("dy", "0.35em")
+            .attr("font-size", `${this.settings.dataLabels.fontSize}px`)
+            .attr("fill", this.getProgressDataLabelColor())
+            .attr("stroke", this.getProgressDataLabelOutlineColor())
+            .attr("stroke-width", 1.5)
+            .attr("stroke-linejoin", "round")
+            .style("paint-order", "stroke")
+            .attr("aria-hidden", "true")
+            .text(task => this.getDataLabelText(task));
     }
 
-    private getDataLabelColor(
+    private getDataLabelText(task: GanttTask): string {
+        const label = task.category || task.name;
+        return this.settings.dataLabels.showProgress && task.progressLabel !== null
+            ? `${label} (${task.progressLabel})`
+            : label;
+    }
+
+    private getBaseDataLabelColor(
         task: GanttTask,
         colorForTask: (task: GanttTask) => string
     ): string {
-        const hasProgressOverlay = task.progress !== null && task.progress > 0 && !task.isMilestone;
         if (this.settings.highContrast.isActive) {
-            return hasProgressOverlay
-                ? this.settings.highContrast.background
-                : this.settings.highContrast.foreground;
+            return this.settings.highContrast.foreground;
         }
 
         if (task.isMilestone) {
             return this.foregroundColor;
         }
 
-        const visibleFill = hasProgressOverlay
-            ? this.settings.progressColor
-            : colorForTask(task);
-        return getContrastTextColor(visibleFill);
+        return getContrastTextColor(colorForTask(task));
     }
 
-    private getDataLabelOutlineColor(
+    private getBaseDataLabelOutlineColor(
         task: GanttTask,
         colorForTask: (task: GanttTask) => string
     ): string {
-        const hasProgressOverlay = task.progress !== null && task.progress > 0 && !task.isMilestone;
         if (this.settings.highContrast.isActive) {
-            return hasProgressOverlay
-                ? this.settings.highContrast.foreground
-                : this.settings.highContrast.background;
+            return this.settings.highContrast.background;
         }
 
-        const textColor = this.getDataLabelColor(task, colorForTask);
+        const textColor = this.getBaseDataLabelColor(task, colorForTask);
         return textColor === "#ffffff" ? "#000000" : "#ffffff";
+    }
+
+    private getProgressDataLabelColor(): string {
+        return this.settings.highContrast.isActive
+            ? this.settings.highContrast.background
+            : getContrastTextColor(this.settings.progressColor);
+    }
+
+    private getProgressDataLabelOutlineColor(): string {
+        if (this.settings.highContrast.isActive) {
+            return this.settings.highContrast.foreground;
+        }
+
+        return this.getProgressDataLabelColor() === "#ffffff" ? "#000000" : "#ffffff";
     }
 
     private renderTodayLine(
@@ -636,6 +691,10 @@ export class GanttChart {
 
     private clipId(task: GanttTask): string {
         return `${this.clipIdPrefix}-label-${task.rowIndex}`;
+    }
+
+    private progressClipId(task: GanttTask): string {
+        return `${this.clipIdPrefix}-progress-label-${task.rowIndex}`;
     }
 
     private buildAriaLabel(task: GanttTask): string {

@@ -149,7 +149,8 @@ describe("Power BI certification metadata", () => {
         expect(harnessHtml).not.toContain(".gantt-bar");
         expect(packageManifest.scripts["test:visual:build"]).toContain("lessc style/visual.less");
         expect(packageManifest.devDependencies.less).toBe("4.6.4");
-        expect(productionStyles).toMatch(/\.gantt-root\s*\{[\s\S]*forced-color-adjust: none/);
+        expect(productionStyles)
+            .toMatch(/\.gantt-root\.gantt-high-contrast\s*\{[\s\S]*forced-color-adjust: none/);
         expect(productionStyles).not.toContain("@media (forced-colors:");
         expect(productionStyles).not.toContain("-ms-high-contrast: active");
     });

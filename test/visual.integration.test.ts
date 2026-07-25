@@ -562,6 +562,10 @@ describe("Gantt Visual integration", () => {
         expect(darkElement.querySelector(".chart-title")?.getAttribute("fill")).toBe("#f5f5f5");
         expect(darkElement.querySelector(".y-label")?.getAttribute("fill")).toBe("#f5f5f5");
         expect(darkElement.style.getPropertyValue("--gantt-focus-color")).toBe("#00ffff");
+        expect(darkElement.style.getPropertyValue("--gantt-background-color")).toBe("#111111");
+        expect(darkElement.style.backgroundColor).toBe("");
+        expect(darkElement.style.color).toBe("");
+        expect(darkElement.classList.contains("gantt-high-contrast")).toBe(false);
     });
 
     it("honors explicitly persisted text colors over host defaults", () => {

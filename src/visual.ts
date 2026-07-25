@@ -264,7 +264,12 @@ export class Visual implements IVisual {
         const categoryFontColor = this.hasFormattingProperty("categories", "fontColor")
             ? this.formattingSettings.categoriesCard.fontColor.value.value
             : foregroundColor;
-        this.applyHostColorBoundary(foregroundColor, backgroundColor, focusColor);
+        this.applyHostColorBoundary(
+            foregroundColor,
+            backgroundColor,
+            focusColor,
+            palette.isHighContrast
+        );
 
         return {
             instanceId: this.host.instanceId || "visual",
@@ -330,13 +335,21 @@ export class Visual implements IVisual {
     private applyHostColorBoundary(
         foregroundColor: string,
         backgroundColor: string,
-        focusColor: string
+        focusColor: string,
+        isHighContrast: boolean
     ): void {
         this.target.style.setProperty("--gantt-foreground-color", foregroundColor);
         this.target.style.setProperty("--gantt-background-color", backgroundColor);
         this.target.style.setProperty("--gantt-focus-color", focusColor);
-        this.target.style.color = foregroundColor;
-        this.target.style.backgroundColor = backgroundColor;
+        this.target.classList.toggle("gantt-high-contrast", isHighContrast);
+
+        if (isHighContrast) {
+            this.target.style.color = foregroundColor;
+            this.target.style.backgroundColor = backgroundColor;
+        } else {
+            this.target.style.removeProperty("color");
+            this.target.style.removeProperty("background-color");
+        }
     }
 
     private createSelectionIds(): void {
@@ -620,14 +633,16 @@ export class Visual implements IVisual {
             return;
         }
 
-        const baseOpacity = this.currentSettings.barOpacity / 100;
+        const highContrast = this.currentSettings.highContrast.isActive;
+        const baseOpacity = highContrast ? 1 : this.currentSettings.barOpacity / 100;
+        const dimmedOpacity = highContrast ? 0.6 : Math.min(baseOpacity, 0.3);
         const opacityForTask = (task: GanttTask): number => {
             if (selectedRows) {
-                return selectedRows.has(task.rowIndex) ? baseOpacity : Math.min(baseOpacity, 0.3);
+                return selectedRows.has(task.rowIndex) ? baseOpacity : dimmedOpacity;
             }
 
             return this.parsedData?.hasHighlights && !task.highlighted
-                ? Math.min(baseOpacity, 0.3)
+                ? dimmedOpacity
                 : baseOpacity;
         };
 
@@ -738,7 +753,7 @@ export class Visual implements IVisual {
         const foreground = palette.foreground?.value || "#333333";
         const background = palette.background?.value || "#ffffff";
         const focus = palette.foregroundSelected?.value || foreground;
-        this.applyHostColorBoundary(foreground, background, focus);
+        this.applyHostColorBoundary(foreground, background, focus, palette.isHighContrast);
         const centerX = width / 2;
         const centerY = height / 2;
 

@@ -37,6 +37,19 @@ const scenarios: Record<string, MockDataInput> = {
             "Integration", "Performance", "UAT", "UI Mockups", "Branding"
         ]
     },
+    roundedPartial: {
+        tasks: ["Rounded partial progress"],
+        startDates: ["2024-01-01"],
+        endDates: ["2024-04-01"],
+        progress: [10],
+        categories: ["Rounded"],
+        objects: {
+            chartSettings: {
+                barHeight: 32,
+                barCornerRadius: 16
+            }
+        } as powerbi.DataViewObjects
+    },
     manyRows: {
         tasks: Array.from({ length: 80 }, (_, index) => `Team ${Math.floor(index / 4) + 1}`),
         startDates: Array.from({ length: 80 }, (_, index) => {
@@ -59,21 +72,30 @@ function renderVisual(): void {
     const params = new URLSearchParams(window.location.search);
     const scenarioName = params.get("scenario") || "standard";
     const scenario = scenarios[scenarioName] || scenarios.standard;
-    const highContrast = params.get("highContrast") === "true";
+    const highContrastParameter = params.get("highContrast");
+    const highContrast = highContrastParameter === "white"
+        ? "white"
+        : highContrastParameter === "true" || highContrastParameter === "dark"
+            ? "dark"
+            : null;
     const target = document.querySelector<HTMLElement>("#visual-container");
     if (!target || !scenario) {
         throw new Error("Visual harness configuration is missing");
     }
 
     const host = createMockHost(highContrast);
+    const scenarioObjects = scenario.objects || {};
     const dataView = buildMockDataView({
         ...scenario,
         objects: {
+            ...scenarioObjects,
             title: {
+                ...scenarioObjects.title,
                 show: true,
                 titleText: `Gantt - ${scenarioName}`
             },
             legend: {
+                ...scenarioObjects.legend,
                 show: true
             }
         } as powerbi.DataViewObjects
@@ -92,7 +114,7 @@ function renderVisual(): void {
     document.body.dataset.renderer = "production-visual";
 }
 
-function createMockHost(highContrast: boolean): IVisualHost {
+function createMockHost(highContrast: "dark" | "white" | null): IVisualHost {
     const selected: ISelectionId[] = [];
     let selectionCallback: (selectionIds: powerbi.extensibility.ISelectionId[]) => void =
         () => undefined;
@@ -136,30 +158,33 @@ function createMockHost(highContrast: boolean): IVisualHost {
         toggleExpandCollapse: () => Promise.resolve({})
     } as ISelectionManager;
     const color = (value: string): powerbi.IColorInfo => ({ value });
+    const highContrastForeground = highContrast === "white" ? "#000000" : "#ffffff";
+    const highContrastBackground = highContrast === "white" ? "#ffffff" : "#000000";
+    const highContrastSelected = highContrast === "white" ? "#0000ff" : "#ffff00";
     const categoryColors = [
         "#2196F3", "#FF9800", "#4CAF50", "#9C27B0", "#F44336",
         "#00BCD4", "#795548", "#607D8B", "#E91E63", "#009688"
     ];
 
     return {
-        instanceId: highContrast ? "browser-high-contrast" : "browser-standard",
+        instanceId: highContrast ? `browser-high-contrast-${highContrast}` : "browser-standard",
         locale: "en-US",
         hostCapabilities: { allowInteractions: true },
         colorPalette: {
-            isHighContrast: highContrast,
-            foreground: color(highContrast ? "#ffffff" : "#333333"),
+            isHighContrast: highContrast !== null,
+            foreground: color(highContrast ? highContrastForeground : "#333333"),
             foregroundLight: color("#666666"),
             foregroundDark: color("#111111"),
-            foregroundNeutralLight: color(highContrast ? "#ffffff" : "#e0e0e0"),
+            foregroundNeutralLight: color(highContrast ? highContrastForeground : "#e0e0e0"),
             foregroundNeutralDark: color("#333333"),
             foregroundNeutralSecondary: color("#666666"),
             foregroundNeutralSecondaryAlt: color("#666666"),
             foregroundNeutralSecondaryAlt2: color("#666666"),
             foregroundNeutralTertiary: color("#999999"),
             foregroundNeutralTertiaryAlt: color("#999999"),
-            foregroundSelected: color("#ffff00"),
+            foregroundSelected: color(highContrastSelected),
             foregroundButton: color("#ffffff"),
-            background: color(highContrast ? "#000000" : "#ffffff"),
+            background: color(highContrast ? highContrastBackground : "#ffffff"),
             backgroundLight: color("#ffffff"),
             backgroundNeutral: color("#f2f2f2"),
             backgroundDark: color("#000000"),
