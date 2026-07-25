@@ -10,6 +10,7 @@ interface PackageManifest {
     scripts: Record<string, string>;
     dependencies: Record<string, string>;
     devDependencies: Record<string, string>;
+    overrides: Record<string, string>;
 }
 
 interface PackageLock {
@@ -33,9 +34,15 @@ describe("Power BI certification metadata", () => {
         const packageLock = readJson<PackageLock>("package-lock.json");
         const visualManifest = readJson<VisualManifest>("pbiviz.json");
 
-        expect(packageManifest.version).toBe("1.0.4.0");
+        expect(packageManifest.version).toBe("1.0.5.0");
         expect(packageManifest.dependencies["powerbi-visuals-api"]).toBe("5.11.1");
         expect(packageManifest.devDependencies["powerbi-visuals-tools"]).toBe("7.2.0");
+        expect(packageManifest.devDependencies.eslint).toBe("10.8.0");
+        expect(packageManifest.overrides).toEqual({
+            "@hono/node-server": "2.0.11",
+            "brace-expansion": "5.0.8",
+            "uuid": "11.1.1"
+        });
         expect(packageManifest.scripts.eslint).toBe("npx eslint . --ext .js,.jsx,.ts,.tsx");
         expect(packageManifest.scripts["clean:package"])
             .toBe("node -e \"for(const path of ['dist','.tmp'])require('fs').rmSync(path,{recursive:true,force:true})\"");
@@ -55,8 +62,9 @@ describe("Power BI certification metadata", () => {
             { cwd: repositoryRoot, encoding: "utf8" }
         )).toBe("5.11.0");
         expect(visualManifest.apiVersion).toBe("5.11.1");
-        expect(visualManifest.visual.version).toBe("1.0.4.0");
-        expect(visualManifest.version).toBe("1.0.4.0");
+        expect(packageLock.packages["node_modules/eslint"]?.version).toBe("10.8.0");
+        expect(visualManifest.visual.version).toBe("1.0.5.0");
+        expect(visualManifest.version).toBe("1.0.5.0");
         expect(visualManifest.visual.guid).toBe("ganttChartATLYN7F3A9D2B5E1C8046");
         expect(visualManifest.externalJS).toEqual([]);
         expect(visualManifest.visual.gitHubUrl)
