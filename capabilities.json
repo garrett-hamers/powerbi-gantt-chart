@@ -197,9 +197,9 @@
         {
             "conditions": [
                 {
-                    "task": { "min": 1, "max": 1 },
-                    "startDate": { "min": 1, "max": 1 },
-                    "endDate": { "min": 1, "max": 1 },
+                    "task": { "max": 1 },
+                    "startDate": { "max": 1 },
+                    "endDate": { "max": 1 },
                     "progress": { "max": 1 },
                     "category": { "max": 1 }
                 }
