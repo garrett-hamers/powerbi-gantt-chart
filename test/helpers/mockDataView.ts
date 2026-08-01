@@ -2,6 +2,8 @@ import type powerbi from "powerbi-visuals-api";
 
 export interface MockDataInput {
     tasks: powerbi.PrimitiveValue[];
+    taskIds?: powerbi.PrimitiveValue[];
+    taskIdFormat?: string;
     startDates: powerbi.PrimitiveValue[];
     endDates: powerbi.PrimitiveValue[];
     progress?: powerbi.PrimitiveValue[];
@@ -48,6 +50,18 @@ export function buildMockDataView(input: MockDataInput): powerbi.DataView {
     } as powerbi.DataViewCategoryColumn;
 
     const categoryColumns: powerbi.DataViewCategoryColumn[] = [taskColumn];
+    if (input.taskIds) {
+        categoryColumns.push({
+            source: {
+                displayName: "Task ID",
+                queryName: "Table.TaskId",
+                type: { text: true },
+                format: input.taskIdFormat,
+                roles: { taskId: true }
+            },
+            values: input.taskIds
+        } as powerbi.DataViewCategoryColumn);
+    }
     if (input.categories) {
         categoryColumns.push({
             source: {

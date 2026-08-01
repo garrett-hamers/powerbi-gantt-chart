@@ -23,6 +23,27 @@ class ChartSettingsCard extends FormattingSettingsCard {
         value: true
     });
 
+    progressInterpretation = new formattingSettings.ItemDropdown({
+        name: "progressInterpretation",
+        displayName: "Progress values",
+        items: [
+            { value: "auto", displayName: "Auto" },
+            { value: "fraction", displayName: "Fraction (0 to 1)" },
+            { value: "percent", displayName: "Percent (0 to 100)" }
+        ],
+        value: { value: "auto", displayName: "Auto" }
+    });
+
+    reversedDateHandling = new formattingSettings.ItemDropdown({
+        name: "reversedDateHandling",
+        displayName: "Reversed dates",
+        items: [
+            { value: "correct", displayName: "Correct and warn" },
+            { value: "exclude", displayName: "Exclude and warn" }
+        ],
+        value: { value: "correct", displayName: "Correct and warn" }
+    });
+
     barHeight = new formattingSettings.NumUpDown({
         name: "barHeight",
         displayName: "Bar Height",
@@ -48,6 +69,8 @@ class ChartSettingsCard extends FormattingSettingsCard {
     slices: Array<FormattingSettingsSlice> = [
         this.showTodayLine,
         this.showGridLines,
+        this.progressInterpretation,
+        this.reversedDateHandling,
         this.barHeight,
         this.barCornerRadius
     ];
@@ -337,4 +360,31 @@ export class VisualFormattingSettingsModel extends FormattingSettingsModel {
         this.designCard,
         this.interactionCard
     ];
+}
+
+export function localizeNewFormattingStrings(
+    model: VisualFormattingSettingsModel,
+    getText: (key: string) => string
+): void {
+    const chart = model.chartSettingsCard;
+    chart.progressInterpretation.displayName = getText("Format_ProgressInterpretation");
+    const selectedProgressValue = chart.progressInterpretation.value.value;
+    chart.progressInterpretation.items = [
+        { value: "auto", displayName: getText("Format_ProgressAuto") },
+        { value: "fraction", displayName: getText("Format_ProgressFraction") },
+        { value: "percent", displayName: getText("Format_ProgressPercent") }
+    ];
+    chart.progressInterpretation.value = chart.progressInterpretation.items.find(
+        item => item.value === selectedProgressValue
+    ) ?? chart.progressInterpretation.items[0];
+
+    chart.reversedDateHandling.displayName = getText("Format_ReversedDates");
+    const selectedDateValue = chart.reversedDateHandling.value.value;
+    chart.reversedDateHandling.items = [
+        { value: "correct", displayName: getText("Format_ReversedCorrect") },
+        { value: "exclude", displayName: getText("Format_ReversedExclude") }
+    ];
+    chart.reversedDateHandling.value = chart.reversedDateHandling.items.find(
+        item => item.value === selectedDateValue
+    ) ?? chart.reversedDateHandling.items[0];
 }

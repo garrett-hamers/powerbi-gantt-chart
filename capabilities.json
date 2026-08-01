@@ -14,9 +14,17 @@
     "dataRoles": [
         {
             "displayName": "Task",
+            "displayNameKey": "Role_Task",
             "name": "task",
             "kind": "Grouping",
             "description": "Task name"
+        },
+        {
+            "displayName": "Task ID",
+            "displayNameKey": "Role_TaskId",
+            "name": "taskId",
+            "kind": "Grouping",
+            "description": "Optional stable identifier used to validate task identity"
         },
         {
             "displayName": "Start Date",
@@ -64,6 +72,23 @@
                 },
                 "showGridLines": {
                     "type": { "bool": true }
+                },
+                "progressInterpretation": {
+                    "type": {
+                        "enumeration": [
+                            { "value": "auto", "displayName": "Auto" },
+                            { "value": "fraction", "displayName": "Fraction (0 to 1)" },
+                            { "value": "percent", "displayName": "Percent (0 to 100)" }
+                        ]
+                    }
+                },
+                "reversedDateHandling": {
+                    "type": {
+                        "enumeration": [
+                            { "value": "correct", "displayName": "Correct and warn" },
+                            { "value": "exclude", "displayName": "Exclude and warn" }
+                        ]
+                    }
                 },
                 "barHeight": {
                     "type": { "numeric": true }
@@ -198,6 +223,7 @@
             "conditions": [
                 {
                     "task": { "max": 1 },
+                    "taskId": { "max": 1 },
                     "startDate": { "max": 1 },
                     "endDate": { "max": 1 },
                     "progress": { "max": 1 },
@@ -208,6 +234,7 @@
                 "categories": {
                     "select": [
                         { "for": { "in": "task" } },
+                        { "for": { "in": "taskId" } },
                         { "for": { "in": "category" } }
                     ],
                     "dataReductionAlgorithm": { "top": { "count": 5000 } }

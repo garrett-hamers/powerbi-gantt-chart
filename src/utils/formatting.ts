@@ -64,10 +64,6 @@ export function calculateDurationDays(startDate: Date, endDate: Date): number {
 }
 
 export function formatDuration(durationDays: number, locale: string): string {
-    if (durationDays === 0) {
-        return "Milestone";
-    }
-
     if (durationDays >= 1) {
         return formatDurationUnit(durationDays, "day", locale);
     }
@@ -99,8 +95,10 @@ function getUtcCalendarDate(value: Date): number {
 
 function formatDurationUnit(value: number, unit: "day" | "hour" | "minute", locale: string): string {
     const formatter = new Intl.NumberFormat(locale, {
+        style: "unit",
+        unit,
+        unitDisplay: "long",
         maximumFractionDigits: Number.isInteger(value) ? 0 : 2
     });
-    const formattedValue = formatter.format(value);
-    return `${formattedValue} ${value === 1 ? unit : `${unit}s`}`;
+    return formatter.format(value);
 }
