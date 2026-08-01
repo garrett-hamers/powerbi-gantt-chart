@@ -341,6 +341,27 @@ describe("Gantt Visual integration", () => {
                 clientY: 50,
                 bubbles: true
             }));
+            firstDataPoint?.dispatchEvent(new PointerEvent("pointermove", {
+                pointerType: "touch",
+                clientX: 80,
+                clientY: 50,
+                bubbles: true
+            }));
+            firstDataPoint?.dispatchEvent(new PointerEvent("pointerup", {
+                pointerType: "touch",
+                clientX: 80,
+                clientY: 50,
+                bubbles: true
+            }));
+            expect(harness.select).toHaveBeenCalledOnce();
+            expect(harness.tooltipShow).toHaveBeenCalledOnce();
+
+            firstDataPoint?.dispatchEvent(new PointerEvent("pointerdown", {
+                pointerType: "touch",
+                clientX: 100,
+                clientY: 120,
+                bubbles: true
+            }));
             await vi.advanceTimersByTimeAsync(600);
             expect(harness.showContextMenu).toHaveBeenCalledOnce();
         } finally {
@@ -396,15 +417,26 @@ describe("Gantt Visual integration", () => {
         expect(localizedHarness.displayWarningIcon.mock.calls.at(-1)?.[0]).toBe("Daten prüfen");
     });
 
+    it("sets logical document direction for RTL hosts", () => {
+        const rtlHarness = createMockHost({ locale: "ar-SA" });
+        const rtlElement = document.createElement("div");
+        const rtlVisual = new Visual({
+            element: rtlElement,
+            host: rtlHarness.host
+        } as VisualConstructorOptions);
+        rtlVisual.update(makeUpdateOptions(sampleDataView()));
+        expect(rtlElement.dir).toBe("rtl");
+    });
+
     it("handles active resize without rebuilding data-point nodes", () => {
         visual.update(makeUpdateOptions(sampleDataView()));
-        const firstDataPoint = element.querySelector(".gantt-data-point");
+        const initialX = Number(element.querySelector(".gantt-data-point")?.getAttribute("x"));
         const resize = makeUpdateOptions(sampleDataView(), 700, 320);
         resize.type = RESIZE_UPDATE_TYPE;
 
         visual.update(resize);
 
-        expect(element.querySelector(".gantt-data-point")).toBe(firstDataPoint);
+        expect(Number(element.querySelector(".gantt-data-point")?.getAttribute("x"))).not.toBe(initialX);
         expect(element.querySelector("svg.ganttBody")?.getAttribute("width")).toBe("700");
         expect(harness.renderEvents).toEqual(["started", "finished", "started", "finished"]);
     });
@@ -470,6 +502,24 @@ describe("Gantt Visual integration", () => {
         expect(dataPoint?.getAttribute("aria-pressed")).toBeNull();
         expect(staticHarness.select).not.toHaveBeenCalled();
         expect(staticHarness.showContextMenu).not.toHaveBeenCalled();
+    });
+
+    it("releases interaction state on destroy", () => {
+        visual.update(makeUpdateOptions(sampleDataView()));
+        const dataPoint = element.querySelector<SVGGraphicsElement>(".gantt-data-point");
+        visual.destroy();
+        dataPoint?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        harness.invokeSelectionCallback([]);
+        expect(harness.select).not.toHaveBeenCalled();
+        expect(harness.tooltipHide).toHaveBeenCalled();
+    });
+
+    it("discloses a reduced DataView segment before rendering", () => {
+        const dataView = sampleDataView();
+        dataView.metadata.segment = {};
+        visual.update(makeUpdateOptions(dataView));
+        expect(harness.displayWarningIcon.mock.calls.at(-1)?.[1])
+            .toContain("reduced data segment");
     });
 
     it("keeps context menus accessible when selection is disabled", () => {
@@ -610,6 +660,29 @@ describe("Gantt Visual integration", () => {
         expect(harness.applyJsonFilter.mock.calls[1]?.[3]).toBe(1);
     });
 
+    it("uses a unique Task ID as the model filter identity", async () => {
+        visual.update(makeUpdateOptions(sampleDataView({
+            tasks: ["Duplicate", "Duplicate"],
+            taskIds: ["T-2", "T-1"],
+            startDates: ["2024-02-01", "2024-01-01"],
+            endDates: ["2024-02-28", "2024-01-31"],
+            objects: {
+                interaction: { crossFilterMode: "filter" }
+            } as powerbi.DataViewObjects
+        })));
+
+        element.querySelector<SVGGraphicsElement>(".gantt-data-point")
+            ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        await Promise.resolve();
+
+        const filter = harness.applyJsonFilter.mock.calls[0]?.[0] as {
+            target: { table: string; column: string };
+            values: string[];
+        };
+        expect(filter.target).toEqual({ table: "Table", column: "TaskId" });
+        expect(filter.values).toEqual(["T-1"]);
+    });
+
     it("restores and clears a persisted model filter", async () => {
         const updateOptions = makeUpdateOptions(sampleDataView({
             objects: {
@@ -638,6 +711,28 @@ describe("Gantt Visual integration", () => {
             "filter",
             1
         );
+    });
+
+    it("does not carry a stale filter across a replaced task field", () => {
+        const first = makeUpdateOptions(sampleDataView({
+            taskQueryName: "Table.Task",
+            objects: { interaction: { crossFilterMode: "filter" } } as powerbi.DataViewObjects
+        }));
+        first.jsonFilters = [{
+            target: { table: "Table", column: "Task" },
+            operator: "In",
+            values: ["Develop"]
+        } as unknown as powerbi.IFilter];
+        visual.update(first);
+        expect(element.querySelectorAll(".gantt-data-point[aria-pressed=\"true\"]")).toHaveLength(1);
+
+        const replaced = makeUpdateOptions(sampleDataView({
+            taskQueryName: "OtherTable.OtherTask",
+            objects: { interaction: { crossFilterMode: "filter" } } as powerbi.DataViewObjects
+        }));
+        replaced.jsonFilters = first.jsonFilters;
+        visual.update(replaced);
+        expect(element.querySelectorAll(".gantt-data-point[aria-pressed=\"true\"]")).toHaveLength(0);
     });
 
     it("clears a persisted filter from an empty-result landing page", () => {

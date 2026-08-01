@@ -364,9 +364,15 @@ export class VisualFormattingSettingsModel extends FormattingSettingsModel {
 
 export function localizeNewFormattingStrings(
     model: VisualFormattingSettingsModel,
-    getText: (key: string) => string
+    getText: (key: string, ...values: Array<string | number>) => string
 ): void {
     const chart = model.chartSettingsCard;
+    chart.name = "chartSettings";
+    chart.displayName = getText("Format_ChartSettings");
+    chart.showTodayLine.displayName = getText("Format_ShowTodayLine");
+    chart.showGridLines.displayName = getText("Format_ShowGridLines");
+    chart.barHeight.displayName = getText("Format_BarHeight");
+    chart.barCornerRadius.displayName = getText("Format_BarCornerRadius");
     chart.progressInterpretation.displayName = getText("Format_ProgressInterpretation");
     const selectedProgressValue = chart.progressInterpretation.value.value;
     chart.progressInterpretation.items = [
@@ -387,4 +393,63 @@ export function localizeNewFormattingStrings(
     chart.reversedDateHandling.value = chart.reversedDateHandling.items.find(
         item => item.value === selectedDateValue
     ) ?? chart.reversedDateHandling.items[0];
+
+    const title = model.titleCard;
+    title.displayName = getText("Format_Title");
+    title.show.displayName = getText("Format_ShowTitle");
+    title.titleText.displayName = getText("Format_TitleText");
+    title.titleText.placeholder = getText("Format_TitlePlaceholder");
+    title.fontSize.displayName = getText("Format_FontSize");
+    title.fontColor.displayName = getText("Format_FontColor");
+    title.alignment.displayName = getText("Format_Alignment");
+    title.alignment.items = [
+        { value: "left", displayName: getText("Format_AlignLeft") },
+        { value: "center", displayName: getText("Format_AlignCenter") },
+        { value: "right", displayName: getText("Format_AlignRight") }
+    ];
+    title.alignment.value = title.alignment.items.find(
+        item => item.value === title.alignment.value.value
+    ) ?? title.alignment.items[0];
+
+    const labels = model.dataLabelsCard;
+    labels.displayName = getText("Format_DataLabels");
+    labels.show.displayName = getText("Format_ShowLabels");
+    labels.fontSize.displayName = getText("Format_FontSize");
+    labels.showProgress.displayName = getText("Format_ShowProgress");
+
+    const categories = model.categoriesCard;
+    categories.displayName = getText("Format_Categories");
+    categories.show.displayName = getText("Format_ShowCategories");
+    categories.fontSize.displayName = getText("Format_FontSize");
+    categories.fontColor.displayName = getText("Format_FontColor");
+
+    model.legendCard.displayName = getText("Format_Legend");
+    model.legendCard.show.displayName = getText("Format_ShowLegend");
+
+    const design = model.designCard;
+    design.displayName = getText("Format_Design");
+    [
+        design.categoryColor1, design.categoryColor2, design.categoryColor3,
+        design.categoryColor4, design.categoryColor5, design.categoryColor6,
+        design.categoryColor7, design.categoryColor8, design.categoryColor9,
+        design.categoryColor10
+    ].forEach((slice, index) => {
+        slice.displayName = getText("Format_CategoryColor", index + 1);
+    });
+    design.progressColor.displayName = getText("Format_ProgressColor");
+    design.todayLineColor.displayName = getText("Format_TodayLineColor");
+    design.barOpacity.displayName = getText("Format_BarOpacity");
+
+    const interaction = model.interactionCard;
+    interaction.displayName = getText("Format_Interaction");
+    interaction.enableSelection.displayName = getText("Format_EnableSelection");
+    interaction.enableTooltips.displayName = getText("Format_EnableTooltips");
+    interaction.crossFilterMode.displayName = getText("Format_CrossFilterMode");
+    interaction.crossFilterMode.items = [
+        { value: "highlight", displayName: getText("Format_Highlight") },
+        { value: "filter", displayName: getText("Format_Filter") }
+    ];
+    interaction.crossFilterMode.value = interaction.crossFilterMode.items.find(
+        item => item.value === interaction.crossFilterMode.value.value
+    ) ?? interaction.crossFilterMode.items[0];
 }

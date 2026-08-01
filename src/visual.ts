@@ -29,6 +29,7 @@ import {
     ProgressInterpretation,
     ReversedDateHandling,
     TaskFilterValue,
+    CATEGORICAL_ROW_LIMIT,
     parseDataViewWithDiagnostics
 } from "./dataParser";
 import { GanttChart, GanttDimensions, GanttSettings } from "./ganttChart";
@@ -52,7 +53,10 @@ const EMPTY_DIAGNOSTICS: ParseDiagnostics = {
     correctedReversedDates: 0,
     excludedReversedDates: 0,
     invalidRows: 0,
-    duplicateTaskIds: 0
+    duplicateTaskIds: 0,
+    blankTaskIds: 0,
+    hasDataSegment: false,
+    atCategoricalRowLimit: false
 };
 
 export class Visual implements IVisual {
@@ -85,16 +89,19 @@ export class Visual implements IVisual {
     private virtualRowHeight = 0;
     private isVirtualized = false;
     private pendingFocusRowIndex: number | null = null;
+    private selectionIdentityQueryName: string | undefined;
+    private selectionResetPending = false;
     private touchContextTimer: ReturnType<typeof setTimeout> | null = null;
     private touchStart: { x: number; y: number } | null = null;
+    private touchMoved = false;
     private touchContextTriggered = false;
     private suppressClickUntil = 0;
+    private destroyed = false;
 
     private readonly handleScroll = (): void => {
         if (!this.isVirtualized || !this.lastViewport || !this.parsedData || !this.currentSettings) {
             return;
         }
-
         const nextStart = this.calculateVirtualWindow(this.parsedData.tasks.length).start;
         if (nextStart !== this.renderedWindowStart) {
             this.renderParsedChart();
@@ -121,6 +128,7 @@ export class Visual implements IVisual {
         this.target.style.overflow = "hidden";
         this.target.style.display = "flex";
         this.target.style.flexDirection = "column";
+        this.target.dir = isRtlLocale(this.host.locale || "en-US") ? "rtl" : "ltr";
 
         this.headerSvg = select(this.target)
             .append("svg")
@@ -153,16 +161,14 @@ export class Visual implements IVisual {
     }
 
     public update(options: VisualUpdateOptions): void {
+        if (this.destroyed) {
+            return;
+        }
         this.events.renderingStarted(options);
 
         try {
             if (this.canUseCachedResize(options)) {
-                if ((options.type & RESIZE_END_UPDATE_TYPE) !== 0) {
-                    this.lastViewport = options.viewport;
-                    this.renderParsedChart();
-                } else {
-                    this.resizeOnly(options.viewport);
-                }
+                this.resizeOnly(options.viewport);
             } else {
                 this.render(options);
             }
@@ -179,12 +185,28 @@ export class Visual implements IVisual {
     }
 
     public destroy(): void {
+        this.destroyed = true;
         this.headerSvg.on(".gantt", null);
-        this.svg.on(".gantt", null);
-        this.chartContainer.selectAll<SVGElement, unknown>("*").on(".gantt", null);
+        this.headerSvg.on(".gantt-clear", null);
+        this.svg.on(".gantt", null).on(".gantt-clear", null);
+        this.chartContainer.selectAll<SVGElement, unknown>("*")
+            .on(".gantt", null)
+            .on(".gantt-touch", null)
+            .on(".gantt-roving", null)
+            .on(".gantt-clear", null);
         this.tooltipService.hide({ immediately: true, isTouchEvent: false });
         this.scrollBody.removeEventListener("scroll", this.handleScroll);
         this.clearTouchContextTimer();
+        this.selectionIds.clear();
+        this.crossFilterValues.clear();
+        this.taskFilterTarget = null;
+        this.dataView = undefined;
+        this.parsedData = null;
+        this.currentSettings = null;
+        this.pendingFocusRowIndex = null;
+        this.lastViewport = null;
+        this.selectionIdentityQueryName = undefined;
+        this.selectionResetPending = false;
     }
 
     private render(options: VisualUpdateOptions): void {
@@ -197,6 +219,8 @@ export class Visual implements IVisual {
         this.chartContainer.attr("transform", null).classed("landing", false);
         this.headerContainer.selectAll("*").remove();
         this.selectionIds.clear();
+        this.crossFilterValues.clear();
+        this.taskFilterTarget = null;
         this.parsedData = null;
         this.currentSettings = null;
         this.parseDiagnostics = { ...EMPTY_DIAGNOSTICS };
@@ -214,11 +238,9 @@ export class Visual implements IVisual {
 
         this.dataView = options.dataViews?.[0];
         if (!this.dataView) {
+            this.resetSelectionIfIdentityChanged(undefined);
             this.formattingSettings = new VisualFormattingSettingsModel();
             localizeNewFormattingStrings(this.formattingSettings, this.getText);
-            if (options.jsonFilters !== undefined) {
-                this.hydrateCrossFilterValues(options.jsonFilters);
-            }
             this.headerSvg.attr("height", 0);
             this.svg.attr("height", height);
             this.renderLandingPage(width, height);
@@ -231,13 +253,6 @@ export class Visual implements IVisual {
         );
         localizeNewFormattingStrings(this.formattingSettings, this.getText);
         this.crossFilterMode = this.getCrossFilterMode();
-        const taskSource = findTaskSource(this.dataView);
-        if (taskSource) {
-            this.taskFilterTarget = getFilterTarget(taskSource);
-        }
-        if (options.jsonFilters !== undefined) {
-            this.hydrateCrossFilterValues(options.jsonFilters);
-        }
         const parseResult = parseDataViewWithDiagnostics(
             this.dataView,
             this.host.locale || "en-US",
@@ -249,6 +264,12 @@ export class Visual implements IVisual {
         );
         this.parsedData = parseResult.data;
         this.parseDiagnostics = parseResult.diagnostics;
+        const identitySource = findIdentitySource(this.dataView, this.parsedData);
+        this.resetSelectionIfIdentityChanged(identitySource?.queryName);
+        this.taskFilterTarget = identitySource ? getFilterTarget(identitySource) : null;
+        if (options.jsonFilters !== undefined) {
+            this.hydrateCrossFilterValues(options.jsonFilters);
+        }
         this.showDataQualityWarning();
         if (!this.parsedData?.tasks.length) {
             this.headerSvg.attr("height", 0);
@@ -381,12 +402,12 @@ export class Visual implements IVisual {
     }
 
     private resizeOnly(viewport: powerbi.IViewport): void {
+        const scrollTop = this.scrollBody.scrollTop;
         const width = normalizeViewportDimension(viewport.width);
         const height = normalizeViewportDimension(viewport.height);
-        const headerHeight = Math.min(30, height);
         this.lastViewport = { width, height };
-        this.headerSvg.attr("width", width).attr("height", headerHeight);
-        this.svg.attr("width", width);
+        this.renderParsedChart();
+        this.scrollBody.scrollTop = scrollTop;
     }
 
     private renderParsedChart(): void {
@@ -470,6 +491,10 @@ export class Visual implements IVisual {
         this.addInteractivity();
         if (this.crossFilterMode === "filter" && this.crossFilterValues.size > 0) {
             this.syncFilterState();
+            this.selectionResetPending = false;
+        } else if (this.selectionResetPending) {
+            this.selectionResetPending = false;
+            this.syncSelectionState([]);
         } else {
             this.syncSelectionState(this.selectionManager.getSelectionIds());
         }
@@ -554,6 +579,14 @@ export class Visual implements IVisual {
                 diagnostics.duplicateTaskIds
             ));
         }
+        if (diagnostics.blankTaskIds > 0) {
+            details.push(this.getText("Warning_BlankTaskIds"));
+        }
+        if (diagnostics.hasDataSegment) {
+            details.push(this.getText("Warning_DataSegment", CATEGORICAL_ROW_LIMIT));
+        } else if (diagnostics.atCategoricalRowLimit) {
+            details.push(this.getText("Warning_DataReductionLimit", CATEGORICAL_ROW_LIMIT));
+        }
 
         this.host.displayWarningIcon?.(
             details.length > 0 ? this.getText("Warning_DataQualityTitle") : "",
@@ -589,19 +622,32 @@ export class Visual implements IVisual {
     }
 
     private createSelectionIds(): void {
-        const taskColumn = this.dataView?.categorical?.categories?.find(
-            category => category.source.roles?.task
+        const identityColumn = this.dataView?.categorical?.categories?.find(category =>
+            this.parsedData?.taskIdentityMode === "taskId"
+                ? category.source.roles?.taskId
+                : category.source.roles?.task
         );
-        if (!taskColumn) {
+        if (!identityColumn) {
             return;
         }
 
-        for (let rowIndex = 0; rowIndex < taskColumn.values.length; rowIndex++) {
+        for (let rowIndex = 0; rowIndex < identityColumn.values.length; rowIndex++) {
             const selectionId = this.host.createSelectionIdBuilder()
-                .withCategory(taskColumn, rowIndex)
+                .withCategory(identityColumn, rowIndex)
                 .createSelectionId();
             this.selectionIds.set(rowIndex, selectionId);
         }
+    }
+
+    private resetSelectionIfIdentityChanged(nextIdentityQueryName: string | undefined): void {
+        if (
+            this.selectionIdentityQueryName !== undefined
+            && this.selectionIdentityQueryName !== nextIdentityQueryName
+        ) {
+            this.selectionResetPending = true;
+            void this.selectionManager.clear();
+        }
+        this.selectionIdentityQueryName = nextIdentityQueryName;
     }
 
     private addInteractivity(): void {
@@ -801,6 +847,7 @@ export class Visual implements IVisual {
 
         this.clearTouchContextTimer();
         this.touchStart = { x: event.clientX, y: event.clientY };
+        this.touchMoved = false;
         this.touchContextTriggered = false;
         this.touchContextTimer = setTimeout(() => {
             this.touchContextTimer = null;
@@ -823,7 +870,9 @@ export class Visual implements IVisual {
             Math.abs(event.clientX - this.touchStart.x) > TOUCH_MOVE_TOLERANCE_PX
             || Math.abs(event.clientY - this.touchStart.y) > TOUCH_MOVE_TOLERANCE_PX
         ) {
+            this.touchMoved = true;
             this.clearTouchContextTimer();
+            this.suppressClickUntil = Date.now() + TOUCH_CONTEXT_DELAY_MS;
         }
     }
 
@@ -833,8 +882,10 @@ export class Visual implements IVisual {
         }
 
         const triggeredContextMenu = this.touchContextTriggered;
+        const moved = this.touchMoved;
         this.clearTouchContextTimer();
-        if (triggeredContextMenu) {
+        if (triggeredContextMenu || moved) {
+            this.suppressClickUntil = Date.now() + TOUCH_CONTEXT_DELAY_MS;
             return;
         }
 
@@ -972,14 +1023,17 @@ export class Visual implements IVisual {
     }
 
     private syncSelectionState(selectionIds: HostSelectionId[]): void {
+        if (this.destroyed) {
+            return;
+        }
         const visualSelectionIds = selectionIds.filter(isVisualSelectionId);
+        const selectedKeys = new Set(
+            visualSelectionIds.map(selectionId => selectionId.getKey())
+        );
         const selectedRows = new Set<number>();
 
         for (const [rowIndex, rowSelectionId] of this.selectionIds) {
-            if (visualSelectionIds.some(selectionId =>
-                rowSelectionId.equals(selectionId)
-                || rowSelectionId.getKey() === selectionId.getKey()
-            )) {
+            if (selectedKeys.has(rowSelectionId.getKey())) {
                 selectedRows.add(rowIndex);
             }
         }
@@ -1030,6 +1084,9 @@ export class Visual implements IVisual {
         coordinates: [number, number],
         isTouchEvent: boolean = false
     ): void {
+        if (this.touchMoved) {
+            return;
+        }
         const selectionId = this.selectionIds.get(task.rowIndex);
         this.tooltipService.show({
             dataItems: this.buildTaskTooltip(task),
@@ -1040,6 +1097,9 @@ export class Visual implements IVisual {
     }
 
     private moveTaskTooltip(task: GanttTask, coordinates: [number, number]): void {
+        if (this.touchMoved) {
+            return;
+        }
         const selectionId = this.selectionIds.get(task.rowIndex);
         this.tooltipService.move({
             dataItems: this.buildTaskTooltip(task),
@@ -1244,6 +1304,18 @@ function findTaskSource(dataView: DataView): powerbi.DataViewMetadataColumn | un
     return dataView.categorical?.categories?.find(
         category => category.source.roles?.task
     )?.source;
+}
+
+function findIdentitySource(
+    dataView: DataView,
+    parsedData: ParsedData | null
+): powerbi.DataViewMetadataColumn | undefined {
+    const role = parsedData?.taskIdentityMode === "taskId" ? "taskId" : "task";
+    return dataView.categorical?.categories?.find(category => category.source.roles?.[role])?.source;
+}
+
+function isRtlLocale(locale: string): boolean {
+    return /^(ar|fa|he|ps|ur)(?:-|$)/i.test(locale);
 }
 
 interface SQExpressionShape {

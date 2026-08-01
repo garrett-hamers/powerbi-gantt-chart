@@ -4,7 +4,7 @@
         "displayName": "Atlyn Gantt Chart",
         "guid": "ganttChartATLYN7F3A9D2B5E1C8046",
         "visualClassName": "Visual",
-        "version": "1.0.7.0",
+        "version": "1.0.8.0",
         "description": "Free Gantt chart for Power BI. Visualize project timelines with task bars, progress tracking, and category coloring.",
         "supportUrl": "https://github.com/garrett-hamers/powerbi-gantt-chart",
         "gitHubUrl": "https://github.com/garrett-hamers/powerbi-gantt-chart"
@@ -24,5 +24,5 @@
         "stringResources/en-US/resources.resjson",
         "stringResources/de-DE/resources.resjson"
     ],
-    "version": "1.0.7.0"
+    "version": "1.0.8.0"
 }
