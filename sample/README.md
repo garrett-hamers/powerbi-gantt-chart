@@ -68,8 +68,14 @@ These are not obvious and cost several rebuild cycles:
    every bar. The sample therefore supplies Progress as a plain 0–100 number,
    which takes the unscaled path. Both forms are supported by the visual.
 
-5. **Without an `OrderBy` a Gantt sorts alphabetically by task**, which reads
-   oddly for a schedule. The generator sorts by start date.
+5. **The visual uses deterministic chronological ordering** (start date, end date,
+   stable identity, name, then source row), so the sample generator and visual
+   remain predictable without claiming a host sort menu.
+
+The visual's categorical data reduction ceiling is 5,000 rows. Larger synthetic
+inputs are useful for bounded virtualization tests only; they do not represent
+full-model support. Virtualized viewport rendering is not a guarantee for PDF,
+PowerPoint, or image export, which must be checked manually in Desktop.
 
 ## Verifying before submission
 

@@ -28,30 +28,35 @@
         },
         {
             "displayName": "Start Date",
+            "displayNameKey": "Role_StartDate",
             "name": "startDate",
             "kind": "Measure",
             "description": "Task start date"
         },
         {
             "displayName": "End Date",
+            "displayNameKey": "Role_EndDate",
             "name": "endDate",
             "kind": "Measure",
             "description": "Task end date"
         },
         {
             "displayName": "Progress",
+            "displayNameKey": "Role_Progress",
             "name": "progress",
             "kind": "Measure",
             "description": "Completion percentage (0-100)"
         },
         {
             "displayName": "Category",
+            "displayNameKey": "Role_Category",
             "name": "category",
             "kind": "Grouping",
             "description": "Group/phase for color coding"
         },
         {
             "displayName": "Tooltips",
+            "displayNameKey": "Role_Tooltips",
             "name": "tooltips",
             "kind": "Measure",
             "description": "Additional measures to show in tooltips"

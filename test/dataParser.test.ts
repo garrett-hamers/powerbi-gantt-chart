@@ -42,7 +42,7 @@ describe("parseDataView", () => {
             progress: [0.25, 1]
         }));
 
-        expect(result.data?.tasks.map(task => task.progress)).toEqual([0.25, 1]);
+        expect(result.data?.tasks.map(task => task.progress)).toEqual([1, 0.25]);
         expect(result.diagnostics.ambiguousProgress).toBe(true);
     });
 
@@ -90,7 +90,7 @@ describe("parseDataView", () => {
             reversedDateHandling: "exclude"
         });
 
-        expect(corrected.data?.tasks.map(task => task.name)).toEqual(["Reversed", "Valid"]);
+        expect(corrected.data?.tasks.map(task => task.name)).toEqual(["Valid", "Reversed"]);
         expect(corrected.diagnostics.correctedReversedDates).toBe(1);
         expect(excluded.data?.tasks.map(task => task.name)).toEqual(["Valid"]);
         expect(excluded.diagnostics.excludedReversedDates).toBe(1);
@@ -106,6 +106,37 @@ describe("parseDataView", () => {
 
         expect(result.data?.tasks.map(task => task.taskId)).toEqual(["A", "B", "A"]);
         expect(result.diagnostics.duplicateTaskIds).toBe(1);
+        expect(result.data?.taskIdentityMode).toBe("task");
+        expect(result.data?.tasks.map(task => task.filterValue)).toEqual(["Design", "Build", "Test"]);
+    });
+
+    it("uses unique Task IDs for duplicate names and keeps the identity with the row", () => {
+        const result = parseDataViewWithDiagnostics(buildMockDataView({
+            tasks: ["Same", "Same"],
+            taskIds: ["A-2", "A-1"],
+            startDates: ["2024-02-01", "2024-01-01"],
+            endDates: ["2024-02-28", "2024-01-31"]
+        }));
+
+        expect(result.data?.taskIdentityMode).toBe("taskId");
+        expect(result.data?.tasks.map(task => task.filterValue)).toEqual(["A-1", "A-2"]);
+        expect(result.data?.tasks.map(task => task.identityKey)).toEqual([
+            "taskId:string:A-1",
+            "taskId:string:A-2"
+        ]);
+    });
+
+    it("falls back to Task identity when an optional ID is blank", () => {
+        const result = parseDataViewWithDiagnostics(buildMockDataView({
+            tasks: ["A", "B"],
+            taskIds: ["", "B-2"],
+            startDates: ["2024-01-01", "2024-02-01"],
+            endDates: ["2024-01-31", "2024-02-28"]
+        }));
+
+        expect(result.diagnostics.blankTaskIds).toBe(1);
+        expect(result.data?.taskIdentityMode).toBe("task");
+        expect(result.data?.tasks.map(task => task.filterValue)).toEqual(["A", "B"]);
     });
 
     it("validates task ID uniqueness from canonical values rather than display formatting", () => {
@@ -168,7 +199,7 @@ describe("parseDataView", () => {
             progress: [-20, 50, 150, Number.POSITIVE_INFINITY]
         }));
 
-        expect(result?.tasks.map(task => task.progress)).toEqual([0, 50, 100, null]);
+        expect(result?.tasks.map(task => task.progress)).toEqual([100, null, 0, 50]);
     });
 
     it("uses one percentage scale for the entire formatted column", () => {
@@ -180,9 +211,9 @@ describe("parseDataView", () => {
             formats: { progress: "0.0%" }
         }), "en-US");
 
-        expect(result?.tasks.map(task => task.progress)).toEqual([62.5, 100, 100, 100]);
-        expect(result?.tasks[0]?.progressLabel).toBe("62.5%");
-        expect(result?.tasks[1]?.progressLabel).toBe("100.0%");
+        expect(result?.tasks.map(task => task.progress)).toEqual([100, 62.5, 100, 100]);
+        expect(result?.tasks[1]?.progressLabel).toBe("62.5%");
+        expect(result?.tasks[0]?.progressLabel).toBe("100.0%");
         expect(result?.tasks[2]?.progressLabel).toBe("100.0%");
     });
 
@@ -214,7 +245,7 @@ describe("parseDataView", () => {
         }));
 
         expect(result?.tasks.map(task => task.progress))
-            .toEqual([null, null, null, null, 50, 100]);
+            .toEqual([null, 100, null, 50, null, null]);
     });
 
     it("skips rows with blank tasks or missing and invalid dates", () => {
@@ -296,7 +327,7 @@ describe("parseDataView", () => {
         }));
 
         expect(result?.tasks.map(task => task.durationLabel))
-            .toEqual(["6 hours", "30 minutes", "< 1 minute"]);
+            .toEqual(["< 1 minute", "30 minutes", "6 hours"]);
     });
 
     it("deduplicates formatted category labels", () => {

@@ -15,6 +15,8 @@ import DataViewValueColumn = powerbi.DataViewValueColumn;
 export type TaskFilterValue = string | number | boolean;
 export type ProgressInterpretation = "auto" | "fraction" | "percent";
 export type ReversedDateHandling = "correct" | "exclude";
+export type TaskIdentityMode = "task" | "taskId";
+export const CATEGORICAL_ROW_LIMIT = 5000;
 
 export interface ParseOptions {
     progressInterpretation?: ProgressInterpretation;
@@ -28,6 +30,9 @@ export interface ParseDiagnostics {
     excludedReversedDates: number;
     invalidRows: number;
     duplicateTaskIds: number;
+    blankTaskIds: number;
+    hasDataSegment: boolean;
+    atCategoricalRowLimit: boolean;
 }
 
 export interface ParseResult {
@@ -44,6 +49,7 @@ export interface GanttTask {
     taskId: string | null;
     name: string;
     filterValue: TaskFilterValue;
+    identityKey: string;
     startDate: Date;
     endDate: Date;
     startDateLabel: string;
@@ -66,6 +72,8 @@ export interface ParsedData {
     maxDate: Date;
     hasHighlights: boolean;
     taskQueryName: string | undefined;
+    taskIdentityMode: TaskIdentityMode;
+    taskIdentityQueryName: string | undefined;
 }
 
 export function parseDataView(
@@ -86,7 +94,10 @@ export function parseDataViewWithDiagnostics(
         correctedReversedDates: 0,
         excludedReversedDates: 0,
         invalidRows: 0,
-        duplicateTaskIds: 0
+        duplicateTaskIds: 0,
+        blankTaskIds: 0,
+        hasDataSegment: dataView?.metadata?.segment !== undefined,
+        atCategoricalRowLimit: false
     };
     const categorical = dataView?.categorical;
     if (!categorical?.categories?.length || !categorical.values) {
@@ -146,16 +157,31 @@ export function parseDataViewWithDiagnostics(
         && isProgressScaleAmbiguous(progressColumn);
     const reversedDateHandling = options.reversedDateHandling ?? "correct";
 
-    const tasks: GanttTask[] = [];
+    const tasks: Array<GanttTask & {
+        taskIdFilterValue: TaskFilterValue | null;
+        taskIdentityKey: string | null;
+    }> = [];
     const categories = new Set<string>();
     const taskIds = new Set<string>();
+    if (taskIdColumn) {
+        for (const rawTaskId of taskIdColumn.values) {
+            const taskIdKey = canonicalTaskId(rawTaskId);
+            if (!taskIdKey) {
+                diagnostics.blankTaskIds++;
+            } else if (taskIds.has(taskIdKey)) {
+                diagnostics.duplicateTaskIds++;
+            } else {
+                taskIds.add(taskIdKey);
+            }
+        }
+    }
     let minDate: Date | undefined;
     let maxDate: Date | undefined;
 
     for (let rowIndex = 0; rowIndex < taskColumn.values.length; rowIndex++) {
         const rawTask = taskColumn.values[rowIndex];
-        const filterValue = toFilterValue(rawTask);
-        if (filterValue === null || rawTask === null || rawTask === undefined) {
+        const taskFilterValue = toFilterValue(rawTask);
+        if (taskFilterValue === null || rawTask === null || rawTask === undefined) {
             diagnostics.invalidRows++;
             continue;
         }
@@ -194,13 +220,7 @@ export function parseDataViewWithDiagnostics(
         const rawTaskId = taskIdColumn?.values[rowIndex];
         const taskId = formatTaskId(rawTaskId, taskIdColumn, locale);
         const taskIdKey = canonicalTaskId(rawTaskId);
-        if (taskIdKey) {
-            if (taskIds.has(taskIdKey)) {
-                diagnostics.duplicateTaskIds++;
-            } else {
-                taskIds.add(taskIdKey);
-            }
-        }
+        const taskIdFilterValue = toFilterValue(rawTaskId);
         if (category) {
             categories.add(category);
         }
@@ -225,7 +245,8 @@ export function parseDataViewWithDiagnostics(
         tasks.push({
             taskId,
             name: taskName,
-            filterValue,
+            filterValue: taskFilterValue,
+            identityKey: `task:${canonicalFilterValue(taskFilterValue)}`,
             startDate: actualStart,
             endDate: actualEnd,
             startDateLabel: formatDate(actualStart, startFormat, locale),
@@ -242,7 +263,9 @@ export function parseDataViewWithDiagnostics(
             category,
             tooltipFields,
             rowIndex,
-            highlighted
+            highlighted,
+            taskIdFilterValue,
+            taskIdentityKey: taskIdKey
         });
 
         if (!minDate || actualStart.getTime() < minDate.getTime()) {
@@ -257,6 +280,22 @@ export function parseDataViewWithDiagnostics(
         return { data: null, diagnostics };
     }
 
+    const useTaskIds = taskIdColumn !== undefined
+        && diagnostics.blankTaskIds === 0
+        && diagnostics.duplicateTaskIds === 0
+        && tasks.every(task => task.taskIdFilterValue !== null && task.taskIdentityKey !== null);
+    const identityMode: TaskIdentityMode = useTaskIds ? "taskId" : "task";
+    for (const task of tasks) {
+        const identityValue = useTaskIds ? task.taskIdFilterValue : task.filterValue;
+        const identityKey = useTaskIds
+            ? `taskId:${task.taskIdentityKey}`
+            : `task:${canonicalFilterValue(task.filterValue)}`;
+        task.filterValue = identityValue as TaskFilterValue;
+        task.identityKey = identityKey;
+    }
+    tasks.sort(compareTasks);
+    diagnostics.atCategoricalRowLimit = taskColumn.values.length >= CATEGORICAL_ROW_LIMIT;
+
     return {
         data: {
             tasks,
@@ -264,10 +303,28 @@ export function parseDataViewWithDiagnostics(
             minDate,
             maxDate,
             hasHighlights,
-            taskQueryName: taskColumn.source.queryName
+            taskQueryName: taskColumn.source.queryName,
+            taskIdentityMode: identityMode,
+            taskIdentityQueryName: (useTaskIds ? taskIdColumn?.source.queryName : taskColumn.source.queryName)
         },
         diagnostics
     };
+}
+
+function compareTasks(left: GanttTask, right: GanttTask): number {
+    return left.startDate.getTime() - right.startDate.getTime()
+        || left.endDate.getTime() - right.endDate.getTime()
+        || compareStrings(left.identityKey, right.identityKey)
+        || compareStrings(left.name, right.name)
+        || left.rowIndex - right.rowIndex;
+}
+
+function canonicalFilterValue(value: TaskFilterValue): string {
+    return `${typeof value}:${String(value)}`;
+}
+
+function compareStrings(left: string, right: string): number {
+    return left === right ? 0 : left < right ? -1 : 1;
 }
 
 function formatTaskId(

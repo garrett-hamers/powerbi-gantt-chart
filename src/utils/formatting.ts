@@ -25,7 +25,7 @@ export function formatValue(
     format: string | undefined,
     locale: string
 ): string {
-    return truncateText(valueFormatter.format(value, format, true, locale));
+    return truncateText(valueFormatter.format(value, format, true, safeLocale(locale)));
 }
 
 export function formatDate(value: Date, format: string | undefined, locale: string): string {
@@ -38,7 +38,7 @@ export function formatProgress(progress: number, format: string | undefined, loc
         usesPercentFormat ? progress / 100 : progress,
         format || "0.##",
         true,
-        locale
+        safeLocale(locale)
     );
 
     return usesPercentFormat ? formatted : `${formatted}%`;
@@ -78,7 +78,7 @@ export function formatDuration(durationDays: number, locale: string): string {
         return formatDurationUnit(durationMinutes, "minute", locale);
     }
 
-    return "< 1 minute";
+    return /^de(?:-|$)/i.test(locale) ? "< 1 Minute" : "< 1 minute";
 }
 
 export function sanitizeInstanceId(instanceId: string): string {
@@ -94,11 +94,24 @@ function getUtcCalendarDate(value: Date): number {
 }
 
 function formatDurationUnit(value: number, unit: "day" | "hour" | "minute", locale: string): string {
-    const formatter = new Intl.NumberFormat(locale, {
-        style: "unit",
-        unit,
-        unitDisplay: "long",
-        maximumFractionDigits: Number.isInteger(value) ? 0 : 2
-    });
-    return formatter.format(value);
+    try {
+        const formatter = new Intl.NumberFormat(safeLocale(locale), {
+            style: "unit",
+            unit,
+            unitDisplay: "long",
+            maximumFractionDigits: Number.isInteger(value) ? 0 : 2
+        });
+        return formatter.format(value);
+    } catch {
+        return `${value} ${unit}${value === 1 ? "" : "s"}`;
+    }
+}
+
+function safeLocale(locale: string): string {
+    try {
+        Intl.getCanonicalLocales(locale);
+        return locale;
+    } catch {
+        return "en-US";
+    }
 }

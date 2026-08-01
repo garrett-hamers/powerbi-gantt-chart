@@ -392,9 +392,14 @@ export class GanttChart {
     }
 
     private decorateDataPoints(): void {
+        const visualOrder = new Map(
+            this.data.tasks.map((task, index) => [task.rowIndex, index])
+        );
         const dataPoints = this.container
             .selectAll<SVGGraphicsElement, GanttTask>(".gantt-data-point")
-            .sort((left, right) => left.rowIndex - right.rowIndex)
+            .sort((left, right) =>
+                (visualOrder.get(left.rowIndex) ?? 0) - (visualOrder.get(right.rowIndex) ?? 0)
+            )
             .attr("data-dp-index", task => String(task.rowIndex))
             .attr("data-highlighted", task => String(task.highlighted))
             .attr("aria-label", task => this.buildAriaLabel(task));
