@@ -4,29 +4,31 @@ A free, open-source Power BI custom visual for project timelines, milestones, pr
 
 ![Power BI](https://img.shields.io/badge/Power_BI-API_5.11.1-yellow)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![Version](https://img.shields.io/badge/Version-1.0.6.0-blue)
+![Version](https://img.shields.io/badge/Version-1.0.7.0-blue)
 
 ## Features
 
 - Date-scaled task bars with pinned axis and vertical scrolling
 - Visible diamond milestones when start and end dates are equal
-- Column-consistent progress overlays supporting 0-100 values or percentage-formatted fractions; blank and invalid progress remains unavailable
+- Explicit Auto, 0-1 fraction, and 0-100 progress interpretation with ambiguity warnings
 - Strict ISO date and datetime parsing, with hour/minute labels for sub-day tasks
 - Category colors, legend, labels, grid lines, title, and today line
 - Model-format-aware dates, progress values, and custom tooltip measures
 - Selection, multi-selection, cross-highlighting, and optional model-filter interaction
 - Data-point and background context menus
 - Keyboard operation, ARIA labels, focus indicators, and host-driven high-contrast colors
-- Safe handling for empty, partial, invalid, non-finite, reversed, and high-volume data
+- Data-quality warnings for invalid rows, corrected/excluded reversed dates, and duplicate stable task IDs
+- Virtualized row rendering and roving keyboard focus for high-volume portfolios
 
 ## Data roles
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | **Task** | Grouping | Yes | Task or work item name |
+| **Task ID** | Grouping | No | Stable identifier used to diagnose duplicate task identities and prepare dependency-safe models |
 | **Start Date** | Measure | Yes | Task start date |
 | **End Date** | Measure | Yes | Task end date; equal dates render a milestone |
-| **Progress** | Measure | No | Completion as 0-100 or a percentage-formatted fraction; blank/invalid values are omitted |
+| **Progress** | Measure | No | Completion interpreted by the Chart Settings mode; blank/invalid values are omitted |
 | **Category** | Grouping | No | Group or phase used for color |
 | **Tooltips** | Measure | No | One or more additional model-formatted tooltip values |
 
@@ -34,7 +36,7 @@ A free, open-source Power BI custom visual for project timelines, milestones, pr
 
 | Card | Options |
 | --- | --- |
-| **Chart Settings** | Today line, grid lines, bar height, corner radius |
+| **Chart Settings** | Today line, grid lines, progress interpretation, reversed-date handling, bar height, corner radius |
 | **Title** | Visibility, text, size, color, alignment |
 | **Data Labels** | Visibility, size, progress value |
 | **Categories** | Visibility, size, color |
@@ -66,7 +68,7 @@ This repository is the complete reviewable source for the package. The visual GU
 
 ## Testing a Marketplace update
 
-Power BI normally loads the latest AppSource version for a published visual. To validate a local update without changing its GUID, enable **Developer mode for this session** under **File > Options and settings > Options > Current file > Report settings**, import the audited `.pbiviz`, then save the PBIX with visual version 1.0.6.0.
+Power BI normally loads the latest AppSource version for a published visual. To validate a local update without changing its GUID, enable **Developer mode for this session** under **File > Options and settings > Options > Current file > Report settings**, import the audited `.pbiviz`, then save the PBIX with visual version 1.0.7.0.
 
 ## License
 

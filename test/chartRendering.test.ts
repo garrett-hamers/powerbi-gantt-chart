@@ -22,6 +22,13 @@ function defaultSettings(overrides: Partial<GanttSettings> = {}): GanttSettings 
         foregroundColor: "#333333",
         gridColor: "#e0e0e0",
         barOpacity: 80,
+        activeRowIndex: 0,
+        strings: {
+            milestoneOn: "milestone on {0}",
+            taskRange: "{0} to {1}, {2}",
+            progress: "progress {0}",
+            category: "category {0}"
+        },
         highContrast: {
             isActive: false,
             foreground: "#000000",
@@ -98,11 +105,15 @@ describe("Gantt chart rendering", () => {
         expect(indexed).toBeGreaterThan(0);
     });
 
-    it("makes every data point keyboard focusable with an accessible label", () => {
+    it("uses one roving tab stop with accessible labels", () => {
         new GanttChart(container, sampleData(), defaultSettings(), defaultDimensions()).render();
-        const firstBar = container.select<SVGGraphicsElement>(".gantt-data-point");
+        const dataPoints = container.selectAll<SVGGraphicsElement, GanttTask>(".gantt-data-point")
+            .nodes();
+        const firstBar = select(dataPoints[0]);
 
         expect(firstBar.attr("tabindex")).toBe("0");
+        expect(dataPoints.slice(1).every(point => point.getAttribute("tabindex") === "-1"))
+            .toBe(true);
         expect(firstBar.attr("role")).toBe("button");
         expect(firstBar.attr("aria-label")).toContain("Design");
         expect(firstBar.attr("aria-keyshortcuts")).toContain("Shift+F10");

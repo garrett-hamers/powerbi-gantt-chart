@@ -20,6 +20,7 @@ interface PackageLock {
 interface VisualManifest {
     apiVersion: string;
     externalJS: unknown[];
+    stringResources: string[];
     visual: {
         guid: string;
         version: string;
@@ -34,7 +35,7 @@ describe("Power BI certification metadata", () => {
         const packageLock = readJson<PackageLock>("package-lock.json");
         const visualManifest = readJson<VisualManifest>("pbiviz.json");
 
-        expect(packageManifest.version).toBe("1.0.6.0");
+        expect(packageManifest.version).toBe("1.0.7.0");
         expect(packageManifest.dependencies["powerbi-visuals-api"]).toBe("5.11.1");
         expect(packageManifest.devDependencies["powerbi-visuals-tools"]).toBe("7.2.0");
         expect(packageManifest.devDependencies.eslint).toBe("10.8.0");
@@ -63,10 +64,17 @@ describe("Power BI certification metadata", () => {
         )).toBe("5.11.0");
         expect(visualManifest.apiVersion).toBe("5.11.1");
         expect(packageLock.packages["node_modules/eslint"]?.version).toBe("10.8.0");
-        expect(visualManifest.visual.version).toBe("1.0.6.0");
-        expect(visualManifest.version).toBe("1.0.6.0");
+        expect(visualManifest.visual.version).toBe("1.0.7.0");
+        expect(visualManifest.version).toBe("1.0.7.0");
         expect(visualManifest.visual.guid).toBe("ganttChartATLYN7F3A9D2B5E1C8046");
         expect(visualManifest.externalJS).toEqual([]);
+        expect(visualManifest.stringResources).toEqual([
+            "stringResources/en-US/resources.resjson",
+            "stringResources/de-DE/resources.resjson"
+        ]);
+        for (const resourcePath of visualManifest.stringResources) {
+            expect(() => readText(resourcePath)).not.toThrow();
+        }
         expect(visualManifest.visual.gitHubUrl)
             .toBe("https://github.com/garrett-hamers/powerbi-gantt-chart");
     });
