@@ -40,8 +40,12 @@ describe("Power BI certification metadata", () => {
         expect(packageManifest.devDependencies["powerbi-visuals-tools"]).toBe("7.2.0");
         expect(packageManifest.devDependencies.eslint).toBe("10.8.0");
         expect(packageManifest.overrides).toEqual({
-            "@hono/node-server": "2.0.11",
-            "brace-expansion": "5.0.8",
+            "@hono/node-server": "2.0.12",
+            "brace-expansion": "5.0.9",
+            "fast-uri": "3.1.5",
+            "hono": "4.12.34",
+            "ip-address": "10.3.1",
+            "postcss": "8.5.25",
             "uuid": "11.1.1"
         });
         expect(packageManifest.scripts.eslint).toBe("npx eslint . --ext .js,.jsx,.ts,.tsx");
