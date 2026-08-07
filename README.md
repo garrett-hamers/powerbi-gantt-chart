@@ -48,14 +48,22 @@ A free, open-source Power BI custom visual for project timelines, milestones, pr
 
 ## Development
 
-Requirements: Node.js 20.19 or newer and npm supported by `powerbi-visuals-tools` 7.2.0.
+Requirements: Node.js 20.19 or newer, npm supported by `powerbi-visuals-tools`
+7.2.0, and Microsoft Edge. Install the pinned Playwright browser engines once:
 
 ```powershell
 npm ci
+npx playwright install chromium webkit
 npm run validate:certification
 ```
 
 `npm run validate:certification` starts with `npm audit --audit-level=moderate` and stops on any nonzero result before running lint, type checking, unit/integration tests, production browser tests, and `pbiviz package --certification-audit`. Build output is intentionally excluded from source control; use the audited `.pbiviz` produced in `dist`.
+
+The browser gate runs pixel regressions in Chromium plus functional rendering,
+selection, pointer context-menu, and keyboard context-menu checks in Chromium,
+Microsoft Edge, and Playwright WebKit. Chromium and WebKit are reproducible engine
+proxies for Partner Center's Online Chrome and Online Safari categories; final
+validation still requires the real Power BI Online clients and macOS Safari.
 
 The categorical data reduction contract is capped at 5,000 rows. Synthetic tests exercise bounded virtualization with larger inputs, but that is not a full-model support claim. When Power BI supplies a reduced segment, the visual discloses it before rendering.
 
