@@ -10,8 +10,8 @@ export default defineConfig({
         viewport: { width: 960, height: 600 },
     },
     webServer: {
-        command: "npx http-server . -p 9222 -c-1 --silent",
-        port: 9222,
-        reuseExistingServer: true,
+        command: "npx http-server . -p 9322 -c-1 --silent",
+        port: 9322,
+        reuseExistingServer: false,
     },
 });

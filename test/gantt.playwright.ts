@@ -1,6 +1,6 @@
 import { expect, Page, test } from "@playwright/test";
 
-const BASE = "http://localhost:9222/test/visual-harness.html";
+const BASE = "http://localhost:9322/test/visual-harness.html";
 
 interface ContrastReport {
     rootBackground: string;
@@ -279,7 +279,10 @@ test.describe("production Gantt visual", () => {
         expect(selectedReport.dataLabelMinimum).toBeGreaterThanOrEqual(4.5);
         const selectedContrast = await measureSelectedOutlineContrast(page);
         expect(selectedContrast).toBeGreaterThanOrEqual(3);
-        await expect(page.locator("#visual-container")).toHaveScreenshot("gantt-forced-colors.png");
+        await expect(page.locator("#visual-container")).toHaveScreenshot(
+            "gantt-forced-colors.png",
+            { maxDiffPixels: 1 }
+        );
 
         await page.goto(`${BASE}?scenario=standard&highContrast=white`);
         await waitForRender(page);

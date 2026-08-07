@@ -94,6 +94,7 @@ describe("Power BI certification metadata", () => {
             "node_modules/",
             ".tmp/",
             "dist/",
+            "sample/out/",
             "test-results/",
             "playwright-report/"
         ]));
