@@ -26,6 +26,13 @@ export interface GanttSettings {
     foregroundColor: string;
     gridColor: string;
     barOpacity: number;
+    activeRowIndex: number;
+    strings: {
+        milestoneOn: string;
+        taskRange: string;
+        progress: string;
+        category: string;
+    };
     highContrast: HighContrastSettings;
     title: {
         show: boolean;
@@ -53,6 +60,11 @@ export interface GanttDimensions {
     width: number;
     height: number;
     margin: { top: number; right: number; bottom: number; left: number };
+    rowWindow?: {
+        offset: number;
+        totalCount: number;
+        rowHeight: number;
+    };
 }
 
 export class GanttChart {
@@ -112,10 +124,14 @@ export class GanttChart {
 
         const minimumRowHeight = this.settings.barHeight + 6;
         const maximumRowHeight = 50;
+        const rowWindow = this.dimensions.rowWindow;
         const viewportRowHeight = Math.max(0, this.chartHeight - chartTop)
             / Math.max(1, this.data.tasks.length);
-        const rowHeight = Math.max(minimumRowHeight, Math.min(maximumRowHeight, viewportRowHeight));
-        const effectiveHeight = this.data.tasks.length * rowHeight;
+        const rowHeight = rowWindow?.rowHeight
+            ?? Math.max(minimumRowHeight, Math.min(maximumRowHeight, viewportRowHeight));
+        const effectiveHeight = (rowWindow?.totalCount ?? this.data.tasks.length) * rowHeight;
+        const visibleTop = chartTop + (rowWindow?.offset ?? 0) * rowHeight;
+        const visibleBottom = visibleTop + this.data.tasks.length * rowHeight;
         if (effectiveHeight <= 0) {
             return;
         }
@@ -135,7 +151,7 @@ export class GanttChart {
         const rowIds = this.data.tasks.map((_, index) => String(index));
         const yScale = scaleBand()
             .domain(rowIds)
-            .range([chartTop, chartTop + effectiveHeight])
+            .range([visibleTop, visibleBottom])
             .padding(0.2);
 
         this.renderGroupSeparators(yScale, effectiveHeight);
@@ -376,15 +392,25 @@ export class GanttChart {
     }
 
     private decorateDataPoints(): void {
+        const visualOrder = new Map(
+            this.data.tasks.map((task, index) => [task.rowIndex, index])
+        );
         const dataPoints = this.container
             .selectAll<SVGGraphicsElement, GanttTask>(".gantt-data-point")
-            .sort((left, right) => left.rowIndex - right.rowIndex)
+            .sort((left, right) =>
+                (visualOrder.get(left.rowIndex) ?? 0) - (visualOrder.get(right.rowIndex) ?? 0)
+            )
             .attr("data-dp-index", task => String(task.rowIndex))
             .attr("data-highlighted", task => String(task.highlighted))
             .attr("aria-label", task => this.buildAriaLabel(task));
 
         dataPoints
-            .attr("tabindex", this.settings.interactionsEnabled ? 0 : null)
+            .attr(
+                "tabindex",
+                task => this.settings.interactionsEnabled
+                    ? task.rowIndex === this.settings.activeRowIndex ? 0 : -1
+                    : null
+            )
             .attr("role", this.settings.selectionEnabled ? "button" : "img")
             .attr("aria-pressed", this.settings.selectionEnabled ? "false" : null)
             .attr(
@@ -699,12 +725,19 @@ export class GanttChart {
 
     private buildAriaLabel(task: GanttTask): string {
         const dateDescription = task.isMilestone
-            ? `milestone on ${task.startDateLabel}`
-            : `${task.startDateLabel} to ${task.endDateLabel}, ${task.durationLabel}`;
+            ? interpolate(this.settings.strings.milestoneOn, task.startDateLabel)
+            : interpolate(
+                this.settings.strings.taskRange,
+                task.startDateLabel,
+                task.endDateLabel,
+                task.durationLabel
+            );
         const progressDescription = task.progressLabel === null
             ? ""
-            : `, progress ${task.progressLabel}`;
-        const categoryDescription = task.category ? `, category ${task.category}` : "";
+            : `, ${interpolate(this.settings.strings.progress, task.progressLabel)}`;
+        const categoryDescription = task.category
+            ? `, ${interpolate(this.settings.strings.category, task.category)}`
+            : "";
         return `${task.name}, ${dateDescription}${progressDescription}${categoryDescription}`;
     }
 
@@ -723,4 +756,11 @@ export class GanttChart {
             ? this.settings.highContrast.foreground
             : this.settings.gridColor;
     }
+}
+
+function interpolate(template: string, ...values: string[]): string {
+    return values.reduce(
+        (result, value, index) => result.replaceAll(`{${index}}`, value),
+        template
+    );
 }

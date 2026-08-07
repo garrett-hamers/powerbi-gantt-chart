@@ -18,10 +18,23 @@ import IVisualEventService = powerbi.extensibility.IVisualEventService;
 import DataView = powerbi.DataView;
 import VisualTooltipDataItem = powerbi.extensibility.VisualTooltipDataItem;
 
-import { VisualFormattingSettingsModel } from "./settings";
-import { GanttTask, ParsedData, TaskFilterValue, parseDataView } from "./dataParser";
+import {
+    VisualFormattingSettingsModel,
+    localizeNewFormattingStrings
+} from "./settings";
+import {
+    GanttTask,
+    ParseDiagnostics,
+    ParsedData,
+    ProgressInterpretation,
+    ReversedDateHandling,
+    TaskFilterValue,
+    CATEGORICAL_ROW_LIMIT,
+    parseDataViewWithDiagnostics
+} from "./dataParser";
 import { GanttChart, GanttDimensions, GanttSettings } from "./ganttChart";
 import { clampNumber, truncateText } from "./utils/formatting";
+import { createTextGetter } from "./localization";
 
 type CrossFilterMode = "highlight" | "filter";
 
@@ -29,6 +42,22 @@ const EMPTY_SELECTION_ID: HostSelectionId = {};
 const EMPTY_FILTER = null as unknown as powerbi.IFilter;
 const MERGE_FILTER_ACTION: powerbi.FilterAction.merge = 0;
 const REMOVE_FILTER_ACTION: powerbi.FilterAction.remove = 1;
+const MAX_RENDERED_ROWS = 200;
+const VIRTUAL_OVERSCAN_ROWS = 10;
+const TOUCH_CONTEXT_DELAY_MS = 600;
+const TOUCH_MOVE_TOLERANCE_PX = 8;
+const RESIZE_UPDATE_TYPE: powerbi.VisualUpdateType = 1 << 2;
+const RESIZE_END_UPDATE_TYPE: powerbi.VisualUpdateType = 1 << 5;
+const EMPTY_DIAGNOSTICS: ParseDiagnostics = {
+    ambiguousProgress: false,
+    correctedReversedDates: 0,
+    excludedReversedDates: 0,
+    invalidRows: 0,
+    duplicateTaskIds: 0,
+    blankTaskIds: 0,
+    hasDataSegment: false,
+    atCategoricalRowLimit: false
+};
 
 export class Visual implements IVisual {
     private readonly target: HTMLElement;
@@ -42,6 +71,7 @@ export class Visual implements IVisual {
     private readonly selectionManager: ISelectionManager;
     private readonly tooltipService: ITooltipService;
     private readonly events: IVisualEventService;
+    private readonly getText: (key: string, ...values: Array<string | number>) => string;
 
     private formattingSettings = new VisualFormattingSettingsModel();
     private dataView: DataView | undefined;
@@ -51,6 +81,32 @@ export class Visual implements IVisual {
     private crossFilterValues = new Map<string, TaskFilterValue>();
     private taskFilterTarget: IFilterColumnTarget | null = null;
     private crossFilterMode: CrossFilterMode = "highlight";
+    private parseDiagnostics: ParseDiagnostics = { ...EMPTY_DIAGNOSTICS };
+    private lastViewport: powerbi.IViewport | null = null;
+    private activeRowIndex = -1;
+    private renderedWindowStart = 0;
+    private renderedWindowEnd = 0;
+    private virtualRowHeight = 0;
+    private isVirtualized = false;
+    private pendingFocusRowIndex: number | null = null;
+    private selectionIdentityQueryName: string | undefined;
+    private selectionResetPending = false;
+    private touchContextTimer: ReturnType<typeof setTimeout> | null = null;
+    private touchStart: { x: number; y: number } | null = null;
+    private touchMoved = false;
+    private touchContextTriggered = false;
+    private suppressClickUntil = 0;
+    private destroyed = false;
+
+    private readonly handleScroll = (): void => {
+        if (!this.isVirtualized || !this.lastViewport || !this.parsedData || !this.currentSettings) {
+            return;
+        }
+        const nextStart = this.calculateVirtualWindow(this.parsedData.tasks.length).start;
+        if (nextStart !== this.renderedWindowStart) {
+            this.renderParsedChart();
+        }
+    };
 
     constructor(options?: VisualConstructorOptions) {
         if (!options) {
@@ -63,13 +119,16 @@ export class Visual implements IVisual {
         this.selectionManager = this.host.createSelectionManager();
         this.tooltipService = this.host.tooltipService;
         this.formattingSettingsService = new FormattingSettingsService();
+        this.getText = createTextGetter(this.host.createLocalizationManager?.());
+        localizeNewFormattingStrings(this.formattingSettings, this.getText);
 
         this.target.classList.add("gantt-root");
         this.target.setAttribute("role", "region");
-        this.target.setAttribute("aria-label", "Atlyn Gantt Chart");
+        this.target.setAttribute("aria-label", this.getText("Visual_Name"));
         this.target.style.overflow = "hidden";
         this.target.style.display = "flex";
         this.target.style.flexDirection = "column";
+        this.target.dir = isRtlLocale(this.host.locale || "en-US") ? "rtl" : "ltr";
 
         this.headerSvg = select(this.target)
             .append("svg")
@@ -85,6 +144,7 @@ export class Visual implements IVisual {
         this.scrollBody.style.overflowY = "hidden";
         this.scrollBody.style.overflowX = "hidden";
         this.target.appendChild(this.scrollBody);
+        this.scrollBody.addEventListener("scroll", this.handleScroll, { passive: true });
 
         this.svg = select(this.scrollBody)
             .append("svg")
@@ -101,10 +161,17 @@ export class Visual implements IVisual {
     }
 
     public update(options: VisualUpdateOptions): void {
+        if (this.destroyed) {
+            return;
+        }
         this.events.renderingStarted(options);
 
         try {
-            this.render(options);
+            if (this.canUseCachedResize(options)) {
+                this.resizeOnly(options.viewport);
+            } else {
+                this.render(options);
+            }
             this.events.renderingFinished(options);
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -118,10 +185,28 @@ export class Visual implements IVisual {
     }
 
     public destroy(): void {
+        this.destroyed = true;
         this.headerSvg.on(".gantt", null);
-        this.svg.on(".gantt", null);
-        this.chartContainer.selectAll<SVGElement, unknown>("*").on(".gantt", null);
+        this.headerSvg.on(".gantt-clear", null);
+        this.svg.on(".gantt", null).on(".gantt-clear", null);
+        this.chartContainer.selectAll<SVGElement, unknown>("*")
+            .on(".gantt", null)
+            .on(".gantt-touch", null)
+            .on(".gantt-roving", null)
+            .on(".gantt-clear", null);
         this.tooltipService.hide({ immediately: true, isTouchEvent: false });
+        this.scrollBody.removeEventListener("scroll", this.handleScroll);
+        this.clearTouchContextTimer();
+        this.selectionIds.clear();
+        this.crossFilterValues.clear();
+        this.taskFilterTarget = null;
+        this.dataView = undefined;
+        this.parsedData = null;
+        this.currentSettings = null;
+        this.pendingFocusRowIndex = null;
+        this.lastViewport = null;
+        this.selectionIdentityQueryName = undefined;
+        this.selectionResetPending = false;
     }
 
     private render(options: VisualUpdateOptions): void {
@@ -134,8 +219,13 @@ export class Visual implements IVisual {
         this.chartContainer.attr("transform", null).classed("landing", false);
         this.headerContainer.selectAll("*").remove();
         this.selectionIds.clear();
+        this.crossFilterValues.clear();
+        this.taskFilterTarget = null;
         this.parsedData = null;
         this.currentSettings = null;
+        this.parseDiagnostics = { ...EMPTY_DIAGNOSTICS };
+        this.lastViewport = { width, height };
+        this.isVirtualized = false;
         this.svg
             .on("click.gantt-clear", null)
             .on("keydown.gantt-clear", null)
@@ -148,10 +238,9 @@ export class Visual implements IVisual {
 
         this.dataView = options.dataViews?.[0];
         if (!this.dataView) {
+            this.resetSelectionIfIdentityChanged(undefined);
             this.formattingSettings = new VisualFormattingSettingsModel();
-            if (options.jsonFilters !== undefined) {
-                this.hydrateCrossFilterValues(options.jsonFilters);
-            }
+            localizeNewFormattingStrings(this.formattingSettings, this.getText);
             this.headerSvg.attr("height", 0);
             this.svg.attr("height", height);
             this.renderLandingPage(width, height);
@@ -162,15 +251,26 @@ export class Visual implements IVisual {
             VisualFormattingSettingsModel,
             this.dataView
         );
+        localizeNewFormattingStrings(this.formattingSettings, this.getText);
         this.crossFilterMode = this.getCrossFilterMode();
-        const taskSource = findTaskSource(this.dataView);
-        if (taskSource) {
-            this.taskFilterTarget = getFilterTarget(taskSource);
-        }
+        const parseResult = parseDataViewWithDiagnostics(
+            this.dataView,
+            this.host.locale || "en-US",
+            {
+                progressInterpretation: this.getProgressInterpretation(),
+                reversedDateHandling: this.getReversedDateHandling(),
+                milestoneLabel: this.getText("Duration_Milestone")
+            }
+        );
+        this.parsedData = parseResult.data;
+        this.parseDiagnostics = parseResult.diagnostics;
+        const identitySource = findIdentitySource(this.dataView, this.parsedData);
+        this.resetSelectionIfIdentityChanged(identitySource?.queryName);
+        this.taskFilterTarget = identitySource ? getFilterTarget(identitySource) : null;
         if (options.jsonFilters !== undefined) {
             this.hydrateCrossFilterValues(options.jsonFilters);
         }
-        this.parsedData = parseDataView(this.dataView, this.host.locale || "en-US");
+        this.showDataQualityWarning();
         if (!this.parsedData?.tasks.length) {
             this.headerSvg.attr("height", 0);
             this.svg.attr("height", height);
@@ -180,51 +280,10 @@ export class Visual implements IVisual {
 
         this.createSelectionIds();
         this.currentSettings = this.buildSettings(this.parsedData);
-
-        const longestName = this.parsedData.tasks.reduce(
-            (longest, task) => task.name.length > longest.length ? task.name : longest,
-            ""
-        );
-        const categoryFontSize = this.currentSettings.categories.fontSize;
-        const estimatedLabelWidth = Math.min(
-            longestName.length * categoryFontSize * 0.6 + 16,
-            width * 0.45
-        );
-        const maximumLeftMargin = Math.max(0, width - 40);
-        const leftMargin = Math.min(maximumLeftMargin, Math.max(60, estimatedLabelWidth));
-        const rightMargin = Math.min(30, Math.max(0, width - leftMargin - 10));
-        const dimensions: GanttDimensions = {
-            width,
-            height: bodyHeight,
-            margin: { top: 10, right: rightMargin, bottom: 0, left: leftMargin }
-        };
-
-        const chart = new GanttChart(
-            this.chartContainer,
-            this.parsedData,
-            this.currentSettings,
-            dimensions,
-            this.headerContainer
-        );
-        chart.render();
-
-        const renderedHeight = Math.max(bodyHeight, chart.requiredHeight);
-        this.svg.attr("height", renderedHeight);
-        this.scrollBody.style.overflowY = chart.requiredHeight > bodyHeight ? "auto" : "hidden";
-        this.svg
-            .attr("role", "group")
-            .attr(
-                "aria-label",
-                `Gantt chart with ${this.parsedData.tasks.length} `
-                    + `${this.parsedData.tasks.length === 1 ? "task" : "tasks"}`
-            );
-
-        this.addInteractivity();
-        if (this.crossFilterMode === "filter" && this.crossFilterValues.size > 0) {
-            this.syncFilterState();
-        } else {
-            this.syncSelectionState(this.selectionManager.getSelectionIds());
+        if (!this.parsedData.tasks.some(task => task.rowIndex === this.activeRowIndex)) {
+            this.activeRowIndex = this.parsedData.tasks[0]?.rowIndex ?? -1;
         }
+        this.renderParsedChart();
     }
 
     private buildSettings(data: ParsedData): GanttSettings {
@@ -273,6 +332,7 @@ export class Visual implements IVisual {
 
         return {
             instanceId: this.host.instanceId || "visual",
+            activeRowIndex: this.activeRowIndex,
             interactionsEnabled,
             selectionEnabled: interactionsEnabled
                 && this.formattingSettings.interactionCard.enableSelection.value,
@@ -302,6 +362,12 @@ export class Visual implements IVisual {
                 background: backgroundColor,
                 foregroundSelected: palette.foregroundSelected?.value || foregroundColor
             },
+            strings: {
+                milestoneOn: this.getText("Aria_MilestoneOn"),
+                taskRange: this.getText("Aria_TaskRange"),
+                progress: this.getText("Aria_Progress"),
+                category: this.getText("Aria_Category")
+            },
             title: {
                 show: this.formattingSettings.titleCard.show.value,
                 text: truncateText(this.formattingSettings.titleCard.titleText.value),
@@ -323,6 +389,209 @@ export class Visual implements IVisual {
                 show: this.formattingSettings.legendCard.show.value
             }
         };
+    }
+
+    private canUseCachedResize(options: VisualUpdateOptions): boolean {
+        if (!this.parsedData || !this.currentSettings || !this.lastViewport) {
+            return false;
+        }
+
+        const resizeFlags = RESIZE_UPDATE_TYPE | RESIZE_END_UPDATE_TYPE;
+        return (options.type & resizeFlags) !== 0
+            && (options.type & ~resizeFlags) === 0;
+    }
+
+    private resizeOnly(viewport: powerbi.IViewport): void {
+        const scrollTop = this.scrollBody.scrollTop;
+        const width = normalizeViewportDimension(viewport.width);
+        const height = normalizeViewportDimension(viewport.height);
+        this.lastViewport = { width, height };
+        this.renderParsedChart();
+        this.scrollBody.scrollTop = scrollTop;
+    }
+
+    private renderParsedChart(): void {
+        if (!this.parsedData || !this.currentSettings || !this.lastViewport) {
+            return;
+        }
+
+        const width = normalizeViewportDimension(this.lastViewport.width);
+        const height = normalizeViewportDimension(this.lastViewport.height);
+        const headerHeight = Math.min(30, height);
+        const bodyHeight = Math.max(0, height - headerHeight);
+        const allTasks = this.parsedData.tasks;
+        const longestName = allTasks.reduce(
+            (longest, task) => task.name.length > longest.length ? task.name : longest,
+            ""
+        );
+        const categoryFontSize = this.currentSettings.categories.fontSize;
+        const estimatedLabelWidth = Math.min(
+            longestName.length * categoryFontSize * 0.6 + 16,
+            width * 0.45
+        );
+        const maximumLeftMargin = Math.max(0, width - 40);
+        const leftMargin = Math.min(maximumLeftMargin, Math.max(60, estimatedLabelWidth));
+        const rightMargin = Math.min(30, Math.max(0, width - leftMargin - 10));
+        const virtualWindow = this.calculateVirtualWindow(allTasks.length);
+        const visibleTasks = allTasks.slice(virtualWindow.start, virtualWindow.end);
+        const visibleData: ParsedData = {
+            ...this.parsedData,
+            tasks: visibleTasks
+        };
+        const dimensions: GanttDimensions = {
+            width,
+            height: bodyHeight,
+            margin: { top: 10, right: rightMargin, bottom: 0, left: leftMargin },
+            rowWindow: virtualWindow.enabled
+                ? {
+                    offset: virtualWindow.start,
+                    totalCount: allTasks.length,
+                    rowHeight: virtualWindow.rowHeight
+                }
+                : undefined
+        };
+
+        this.currentSettings.activeRowIndex = visibleTasks.some(
+            task => task.rowIndex === this.activeRowIndex
+        )
+            ? this.activeRowIndex
+            : visibleTasks[0]?.rowIndex ?? this.activeRowIndex;
+        this.chartContainer.selectAll("*").remove();
+        this.headerContainer.selectAll("*").remove();
+        this.svg
+            .on("click.gantt-clear", null)
+            .on("keydown.gantt-clear", null)
+            .classed("filter-clearable", false);
+        this.headerSvg.attr("width", width).attr("height", headerHeight);
+        this.svg.attr("width", width);
+
+        const chart = new GanttChart(
+            this.chartContainer,
+            visibleData,
+            this.currentSettings,
+            dimensions,
+            this.headerContainer
+        );
+        chart.render();
+
+        this.isVirtualized = virtualWindow.enabled;
+        this.virtualRowHeight = virtualWindow.rowHeight;
+        this.renderedWindowStart = virtualWindow.start;
+        this.renderedWindowEnd = virtualWindow.end;
+        const renderedHeight = Math.max(bodyHeight, chart.requiredHeight);
+        this.svg.attr("height", renderedHeight);
+        this.scrollBody.style.overflowY = chart.requiredHeight > bodyHeight ? "auto" : "hidden";
+        const taskWord = allTasks.length === 1
+            ? this.getText("Chart_Task")
+            : this.getText("Chart_Tasks");
+        this.svg
+            .attr("role", "group")
+            .attr("aria-label", this.getText("Aria_ChartTasks", allTasks.length, taskWord));
+
+        this.addInteractivity();
+        if (this.crossFilterMode === "filter" && this.crossFilterValues.size > 0) {
+            this.syncFilterState();
+            this.selectionResetPending = false;
+        } else if (this.selectionResetPending) {
+            this.selectionResetPending = false;
+            this.syncSelectionState([]);
+        } else {
+            this.syncSelectionState(this.selectionManager.getSelectionIds());
+        }
+
+        if (this.pendingFocusRowIndex !== null) {
+            const rowIndex = this.pendingFocusRowIndex;
+            this.pendingFocusRowIndex = null;
+            this.target.querySelector<SVGGraphicsElement>(
+                `.gantt-data-point[data-dp-index="${rowIndex}"]`
+            )?.focus();
+        }
+    }
+
+    private calculateVirtualWindow(taskCount: number): {
+        enabled: boolean;
+        start: number;
+        end: number;
+        rowHeight: number;
+    } {
+        const rowHeight = Math.min(106, Math.max(10, (this.currentSettings?.barHeight ?? 24) + 6));
+        if (taskCount <= MAX_RENDERED_ROWS || !this.lastViewport) {
+            return { enabled: false, start: 0, end: taskCount, rowHeight };
+        }
+
+        const bodyHeight = Math.max(0, normalizeViewportDimension(this.lastViewport.height) - 30);
+        const firstVisible = Math.max(0, Math.floor(this.scrollBody.scrollTop / rowHeight));
+        const visibleCount = Math.max(1, Math.ceil(bodyHeight / rowHeight));
+        const start = Math.max(0, firstVisible - VIRTUAL_OVERSCAN_ROWS);
+        const end = Math.min(
+            taskCount,
+            Math.max(
+                start + 1,
+                firstVisible + visibleCount + VIRTUAL_OVERSCAN_ROWS
+            )
+        );
+        return {
+            enabled: true,
+            start,
+            end: Math.min(end, start + MAX_RENDERED_ROWS),
+            rowHeight
+        };
+    }
+
+    private getProgressInterpretation(): ProgressInterpretation {
+        const value = String(
+            this.formattingSettings.chartSettingsCard.progressInterpretation.value.value
+        );
+        return value === "fraction" || value === "percent" ? value : "auto";
+    }
+
+    private getReversedDateHandling(): ReversedDateHandling {
+        const value = String(
+            this.formattingSettings.chartSettingsCard.reversedDateHandling.value.value
+        );
+        return value === "exclude" ? "exclude" : "correct";
+    }
+
+    private showDataQualityWarning(): void {
+        const diagnostics = this.parseDiagnostics;
+        const details: string[] = [];
+        if (diagnostics.ambiguousProgress) {
+            details.push(this.getText("Warning_AmbiguousProgress"));
+        }
+        if (diagnostics.correctedReversedDates > 0) {
+            details.push(this.getText(
+                "Warning_ReversedCorrected",
+                diagnostics.correctedReversedDates
+            ));
+        }
+        if (diagnostics.excludedReversedDates > 0) {
+            details.push(this.getText(
+                "Warning_ReversedExcluded",
+                diagnostics.excludedReversedDates
+            ));
+        }
+        if (diagnostics.invalidRows > 0) {
+            details.push(this.getText("Warning_InvalidRows", diagnostics.invalidRows));
+        }
+        if (diagnostics.duplicateTaskIds > 0) {
+            details.push(this.getText(
+                "Warning_DuplicateTaskIds",
+                diagnostics.duplicateTaskIds
+            ));
+        }
+        if (diagnostics.blankTaskIds > 0) {
+            details.push(this.getText("Warning_BlankTaskIds"));
+        }
+        if (diagnostics.hasDataSegment) {
+            details.push(this.getText("Warning_DataSegment", CATEGORICAL_ROW_LIMIT));
+        } else if (diagnostics.atCategoricalRowLimit) {
+            details.push(this.getText("Warning_DataReductionLimit", CATEGORICAL_ROW_LIMIT));
+        }
+
+        this.host.displayWarningIcon?.(
+            details.length > 0 ? this.getText("Warning_DataQualityTitle") : "",
+            details.join("\n")
+        );
     }
 
     private hasFormattingProperty(objectName: string, propertyName: string): boolean {
@@ -353,19 +622,32 @@ export class Visual implements IVisual {
     }
 
     private createSelectionIds(): void {
-        const taskColumn = this.dataView?.categorical?.categories?.find(
-            category => category.source.roles?.task
+        const identityColumn = this.dataView?.categorical?.categories?.find(category =>
+            this.parsedData?.taskIdentityMode === "taskId"
+                ? category.source.roles?.taskId
+                : category.source.roles?.task
         );
-        if (!taskColumn) {
+        if (!identityColumn) {
             return;
         }
 
-        for (let rowIndex = 0; rowIndex < taskColumn.values.length; rowIndex++) {
+        for (let rowIndex = 0; rowIndex < identityColumn.values.length; rowIndex++) {
             const selectionId = this.host.createSelectionIdBuilder()
-                .withCategory(taskColumn, rowIndex)
+                .withCategory(identityColumn, rowIndex)
                 .createSelectionId();
             this.selectionIds.set(rowIndex, selectionId);
         }
+    }
+
+    private resetSelectionIfIdentityChanged(nextIdentityQueryName: string | undefined): void {
+        if (
+            this.selectionIdentityQueryName !== undefined
+            && this.selectionIdentityQueryName !== nextIdentityQueryName
+        ) {
+            this.selectionResetPending = true;
+            void this.selectionManager.clear();
+        }
+        this.selectionIdentityQueryName = nextIdentityQueryName;
     }
 
     private addInteractivity(): void {
@@ -386,6 +668,9 @@ export class Visual implements IVisual {
                 .on("contextmenu.gantt", (event: MouseEvent, task: GanttTask) => {
                     event.preventDefault();
                     event.stopPropagation();
+                    if (Date.now() < this.suppressClickUntil) {
+                        return;
+                    }
                     this.showDataPointContextMenu(task, {
                         x: event.clientX,
                         y: event.clientY
@@ -393,6 +678,21 @@ export class Visual implements IVisual {
                 })
                 .on("keydown.gantt", (event: KeyboardEvent, task: GanttTask) => {
                     this.handleDataPointKeydown(event, task);
+                })
+                .on("focus.gantt-roving", (_event: FocusEvent, task: GanttTask) => {
+                    this.setActiveDataPoint(task.rowIndex);
+                })
+                .on("pointerdown.gantt-touch", (event: PointerEvent, task: GanttTask) => {
+                    this.handlePointerDown(event, task);
+                })
+                .on("pointermove.gantt-touch", (event: PointerEvent) => {
+                    this.handlePointerMove(event);
+                })
+                .on("pointerup.gantt-touch", (event: PointerEvent, task: GanttTask) => {
+                    this.handlePointerUp(event, task);
+                })
+                .on("pointercancel.gantt-touch", () => {
+                    this.clearTouchContextTimer();
                 });
         }
 
@@ -400,6 +700,9 @@ export class Visual implements IVisual {
             dataPoints.on("click.gantt", (event: MouseEvent, task: GanttTask) => {
                 event.preventDefault();
                 event.stopPropagation();
+                if (Date.now() < this.suppressClickUntil) {
+                    return;
+                }
                 this.selectTask(task, event.ctrlKey || event.metaKey);
             });
 
@@ -471,7 +774,7 @@ export class Visual implements IVisual {
         if (direction !== 0 || event.key === "Home" || event.key === "End") {
             event.preventDefault();
             this.moveDataPointFocus(
-                event.currentTarget as SVGGraphicsElement,
+                task,
                 direction,
                 event.key === "Home",
                 event.key === "End"
@@ -480,25 +783,132 @@ export class Visual implements IVisual {
     }
 
     private moveDataPointFocus(
-        current: SVGGraphicsElement,
+        currentTask: GanttTask,
         direction: number,
         moveToStart: boolean,
         moveToEnd: boolean
     ): void {
-        const dataPoints = Array.from(
-            this.target.querySelectorAll<SVGGraphicsElement>(".gantt-data-point")
-        );
-        const currentIndex = dataPoints.indexOf(current);
-        if (currentIndex < 0 || dataPoints.length === 0) {
+        const tasks = this.parsedData?.tasks ?? [];
+        const currentIndex = tasks.findIndex(task => task.rowIndex === currentTask.rowIndex);
+        if (currentIndex < 0 || tasks.length === 0) {
             return;
         }
 
         const targetIndex = moveToStart
             ? 0
             : moveToEnd
-                ? dataPoints.length - 1
-                : (currentIndex + direction + dataPoints.length) % dataPoints.length;
-        dataPoints[targetIndex]?.focus();
+                ? tasks.length - 1
+                : (currentIndex + direction + tasks.length) % tasks.length;
+        const targetTask = tasks[targetIndex];
+        if (!targetTask) {
+            return;
+        }
+
+        this.activeRowIndex = targetTask.rowIndex;
+        this.pendingFocusRowIndex = targetTask.rowIndex;
+        if (
+            this.isVirtualized
+            && (targetIndex < this.renderedWindowStart || targetIndex >= this.renderedWindowEnd)
+        ) {
+            const bodyHeight = Math.max(
+                this.virtualRowHeight,
+                normalizeViewportDimension(this.lastViewport?.height ?? 0) - 30
+            );
+            const rowTop = targetIndex * this.virtualRowHeight;
+            const rowBottom = rowTop + this.virtualRowHeight;
+            if (rowTop < this.scrollBody.scrollTop) {
+                this.scrollBody.scrollTop = rowTop;
+            } else if (rowBottom > this.scrollBody.scrollTop + bodyHeight) {
+                this.scrollBody.scrollTop = Math.max(0, rowBottom - bodyHeight);
+            }
+            this.renderParsedChart();
+            return;
+        }
+
+        this.setActiveDataPoint(targetTask.rowIndex);
+        this.target.querySelector<SVGGraphicsElement>(
+            `.gantt-data-point[data-dp-index="${targetTask.rowIndex}"]`
+        )?.focus();
+    }
+
+    private setActiveDataPoint(rowIndex: number): void {
+        this.activeRowIndex = rowIndex;
+        if (this.currentSettings) {
+            this.currentSettings.activeRowIndex = rowIndex;
+        }
+        this.chartContainer.selectAll<SVGGraphicsElement, GanttTask>(".gantt-data-point")
+            .attr("tabindex", task => task.rowIndex === rowIndex ? 0 : -1);
+    }
+
+    private handlePointerDown(event: PointerEvent, task: GanttTask): void {
+        if (event.pointerType !== "touch") {
+            return;
+        }
+
+        this.clearTouchContextTimer();
+        this.touchStart = { x: event.clientX, y: event.clientY };
+        this.touchMoved = false;
+        this.touchContextTriggered = false;
+        this.touchContextTimer = setTimeout(() => {
+            this.touchContextTimer = null;
+            this.touchContextTriggered = true;
+            this.suppressClickUntil = Date.now() + TOUCH_CONTEXT_DELAY_MS;
+            this.hideTaskTooltip();
+            this.showDataPointContextMenu(task, {
+                x: event.clientX,
+                y: event.clientY
+            });
+        }, TOUCH_CONTEXT_DELAY_MS);
+    }
+
+    private handlePointerMove(event: PointerEvent): void {
+        if (event.pointerType !== "touch" || !this.touchStart) {
+            return;
+        }
+
+        if (
+            Math.abs(event.clientX - this.touchStart.x) > TOUCH_MOVE_TOLERANCE_PX
+            || Math.abs(event.clientY - this.touchStart.y) > TOUCH_MOVE_TOLERANCE_PX
+        ) {
+            this.touchMoved = true;
+            this.clearTouchContextTimer();
+            this.suppressClickUntil = Date.now() + TOUCH_CONTEXT_DELAY_MS;
+        }
+    }
+
+    private handlePointerUp(event: PointerEvent, task: GanttTask): void {
+        if (event.pointerType !== "touch") {
+            return;
+        }
+
+        const triggeredContextMenu = this.touchContextTriggered;
+        const moved = this.touchMoved;
+        this.clearTouchContextTimer();
+        if (triggeredContextMenu || moved) {
+            this.suppressClickUntil = Date.now() + TOUCH_CONTEXT_DELAY_MS;
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        this.suppressClickUntil = Date.now() + TOUCH_CONTEXT_DELAY_MS;
+        if (
+            this.formattingSettings.interactionCard.enableTooltips.value
+            && this.tooltipService.enabled()
+        ) {
+            this.showTaskTooltip(task, [event.clientX, event.clientY], true);
+        }
+        if (this.formattingSettings.interactionCard.enableSelection.value) {
+            this.selectTask(task, event.ctrlKey || event.metaKey);
+        }
+    }
+
+    private clearTouchContextTimer(): void {
+        if (this.touchContextTimer !== null) {
+            clearTimeout(this.touchContextTimer);
+            this.touchContextTimer = null;
+        }
+        this.touchStart = null;
     }
 
     private selectTask(task: GanttTask, multiSelect: boolean): void {
@@ -613,14 +1023,17 @@ export class Visual implements IVisual {
     }
 
     private syncSelectionState(selectionIds: HostSelectionId[]): void {
+        if (this.destroyed) {
+            return;
+        }
         const visualSelectionIds = selectionIds.filter(isVisualSelectionId);
+        const selectedKeys = new Set(
+            visualSelectionIds.map(selectionId => selectionId.getKey())
+        );
         const selectedRows = new Set<number>();
 
         for (const [rowIndex, rowSelectionId] of this.selectionIds) {
-            if (visualSelectionIds.some(selectionId =>
-                rowSelectionId.equals(selectionId)
-                || rowSelectionId.getKey() === selectionId.getKey()
-            )) {
+            if (selectedKeys.has(rowSelectionId.getKey())) {
                 selectedRows.add(rowIndex);
             }
         }
@@ -666,17 +1079,27 @@ export class Visual implements IVisual {
         }
     }
 
-    private showTaskTooltip(task: GanttTask, coordinates: [number, number]): void {
+    private showTaskTooltip(
+        task: GanttTask,
+        coordinates: [number, number],
+        isTouchEvent: boolean = false
+    ): void {
+        if (this.touchMoved) {
+            return;
+        }
         const selectionId = this.selectionIds.get(task.rowIndex);
         this.tooltipService.show({
             dataItems: this.buildTaskTooltip(task),
             identities: selectionId ? [selectionId] : [],
             coordinates,
-            isTouchEvent: false
+            isTouchEvent
         });
     }
 
     private moveTaskTooltip(task: GanttTask, coordinates: [number, number]): void {
+        if (this.touchMoved) {
+            return;
+        }
         const selectionId = this.selectionIds.get(task.rowIndex);
         this.tooltipService.move({
             dataItems: this.buildTaskTooltip(task),
@@ -692,27 +1115,36 @@ export class Visual implements IVisual {
 
     private buildTaskTooltip(task: GanttTask): VisualTooltipDataItem[] {
         const items: VisualTooltipDataItem[] = [
-            { displayName: "Task", value: task.name }
+            { displayName: this.getText("Tooltip_Task"), value: task.name }
         ];
+        if (task.taskId) {
+            items.push({ displayName: this.getText("Tooltip_TaskId"), value: task.taskId });
+        }
 
         if (task.isMilestone) {
             items.push(
-                { displayName: "Date", value: task.startDateLabel },
-                { displayName: "Duration", value: task.durationLabel }
+                { displayName: this.getText("Tooltip_Date"), value: task.startDateLabel },
+                { displayName: this.getText("Tooltip_Duration"), value: task.durationLabel }
             );
         } else {
             items.push(
-                { displayName: "Start", value: task.startDateLabel },
-                { displayName: "End", value: task.endDateLabel },
-                { displayName: "Duration", value: task.durationLabel }
+                { displayName: this.getText("Tooltip_Start"), value: task.startDateLabel },
+                { displayName: this.getText("Tooltip_End"), value: task.endDateLabel },
+                { displayName: this.getText("Tooltip_Duration"), value: task.durationLabel }
             );
         }
 
         if (task.progressLabel !== null) {
-            items.push({ displayName: "Progress", value: task.progressLabel });
+            items.push({
+                displayName: this.getText("Tooltip_Progress"),
+                value: task.progressLabel
+            });
         }
         if (task.category) {
-            items.push({ displayName: "Category", value: task.category });
+            items.push({
+                displayName: this.getText("Tooltip_Category"),
+                value: task.category
+            });
         }
         items.push(...task.tooltipFields);
         return items;
@@ -761,16 +1193,22 @@ export class Visual implements IVisual {
         this.chartContainer.classed("landing", true);
         const hasActiveTaskFilter = this.taskFilterTarget !== null
             && this.crossFilterValues.size > 0;
+        const hasInvalidRows = this.parseDiagnostics.invalidRows > 0
+            || this.parseDiagnostics.excludedReversedDates > 0;
         const canClearFilter = this.host.hostCapabilities?.allowInteractions !== false
             && hasActiveTaskFilter;
         const heading = hasActiveTaskFilter
-            ? "No tasks match the current filter"
-            : "Atlyn Gantt Chart";
+            ? this.getText("Landing_NoMatchingTasks")
+            : hasInvalidRows
+                ? this.getText("Landing_NoValidTasks")
+                : this.getText("Visual_Name");
         const guidance = hasActiveTaskFilter
             ? canClearFilter
-                ? "Select this message or press Enter to clear the task filter"
-                : "Clear the task filter in the Filters pane"
-            : "Add Task, Start Date, and End Date fields";
+                ? this.getText("Landing_ClearFilter")
+                : this.getText("Landing_ClearFilterPane")
+            : hasInvalidRows
+                ? this.getText("Landing_ReviewData")
+                : this.getText("Landing_AddFields");
         this.svg
             .classed("filter-clearable", canClearFilter)
             .attr("role", canClearFilter ? "button" : "img")
@@ -780,9 +1218,11 @@ export class Visual implements IVisual {
                 "aria-label",
                 hasActiveTaskFilter
                     ? canClearFilter
-                        ? "Atlyn Gantt Chart has no matching tasks. Activate to clear the task filter."
-                        : "Atlyn Gantt Chart has no matching tasks. Clear the task filter in the Filters pane."
-                    : "Atlyn Gantt Chart. Add Task, Start Date, and End Date fields."
+                        ? this.getText("Aria_LandingClearFilter")
+                        : this.getText("Aria_LandingClearFilterPane")
+                    : hasInvalidRows
+                        ? this.getText("Aria_LandingNoValidTasks")
+                        : this.getText("Aria_LandingAddFields")
             );
         if (canClearFilter) {
             this.svg
@@ -864,6 +1304,18 @@ function findTaskSource(dataView: DataView): powerbi.DataViewMetadataColumn | un
     return dataView.categorical?.categories?.find(
         category => category.source.roles?.task
     )?.source;
+}
+
+function findIdentitySource(
+    dataView: DataView,
+    parsedData: ParsedData | null
+): powerbi.DataViewMetadataColumn | undefined {
+    const role = parsedData?.taskIdentityMode === "taskId" ? "taskId" : "task";
+    return dataView.categorical?.categories?.find(category => category.source.roles?.[role])?.source;
+}
+
+function isRtlLocale(locale: string): boolean {
+    return /^(ar|fa|he|ps|ur)(?:-|$)/i.test(locale);
 }
 
 interface SQExpressionShape {

@@ -1,53 +1,55 @@
 {
-    "name": "gantt-chart-visual",
-    "description": "Atlyn Gantt Chart for Power BI",
-    "version": "1.0.5.0",
-    "repository": {
-        "type": "git",
-        "url": "https://github.com/garrett-hamers/powerbi-gantt-chart"
-    },
-    "license": "MIT",
-    "scripts": {
-        "pbiviz": "pbiviz",
-        "start": "pbiviz start",
-        "clean:package": "node -e \"for(const path of ['dist','.tmp'])require('fs').rmSync(path,{recursive:true,force:true})\"",
-        "package": "npm run clean:package && pbiviz package --certification-audit",
-        "eslint": "npx eslint . --ext .js,.jsx,.ts,.tsx",
-        "lint": "npm run eslint",
-        "test": "vitest run",
-        "test:watch": "vitest",
-        "test:visual:build": "node -e \"require('fs').mkdirSync('.tmp',{recursive:true})\" && npx lessc style/visual.less .tmp/visual-harness.css && npx esbuild test/visual-harness-entry.ts --bundle --outfile=.tmp/visual-harness-bundle.js --format=iife --target=es2020 --loader:.less=empty",
-        "test:visual": "npm run test:visual:build && npx playwright test --config=playwright.config.ts",
-        "test:visual:update": "npm run test:visual:build && npx playwright test --config=playwright.config.ts --update-snapshots",
-        "validate:certification": "npm audit --audit-level=moderate && npm run eslint && npx tsc --noEmit && npm test && npm run test:visual && npm run package"
-    },
-    "dependencies": {
-        "d3-axis": "3.0.0",
-        "d3-scale": "4.0.2",
-        "d3-selection": "3.0.0",
-        "powerbi-models": "2.0.1",
-        "powerbi-visuals-api": "5.11.1",
-        "powerbi-visuals-utils-formattingmodel": "7.1.0",
-        "powerbi-visuals-utils-formattingutils": "6.1.2"
-    },
-    "devDependencies": {
-        "@playwright/test": "1.61.1",
-        "@types/d3-axis": "3.0.6",
-        "@types/d3-scale": "4.0.9",
-        "@types/d3-selection": "3.0.11",
-        "esbuild": "0.28.1",
-        "eslint": "10.8.0",
-        "eslint-plugin-powerbi-visuals": "1.1.1",
-        "happy-dom": "20.11.0",
-        "http-server": "14.1.1",
-        "less": "4.6.4",
-        "powerbi-visuals-tools": "7.2.0",
-        "typescript": "5.9.3",
-        "vitest": "4.1.10"
-    },
-    "overrides": {
-        "@hono/node-server": "2.0.11",
-        "brace-expansion": "5.0.8",
-        "uuid": "11.1.1"
-    }
+  "name": "gantt-chart-visual",
+  "description": "Atlyn Gantt Chart for Power BI",
+  "version": "1.0.8.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/garrett-hamers/powerbi-gantt-chart"
+  },
+  "license": "MIT",
+  "scripts": {
+    "pbiviz": "pbiviz",
+    "start": "pbiviz start",
+    "clean:package": "node -e \"for(const path of ['dist','.tmp'])require('fs').rmSync(path,{recursive:true,force:true})\"",
+    "package": "npm run clean:package && pbiviz package --certification-audit",
+    "eslint": "npx eslint . --ext .js,.jsx,.ts,.tsx",
+    "lint": "npm run eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:visual:build": "node -e \"require('fs').mkdirSync('.tmp',{recursive:true})\" && npx lessc style/visual.less .tmp/visual-harness.css && npx esbuild test/visual-harness-entry.ts --bundle --outfile=.tmp/visual-harness-bundle.js --format=iife --target=es2020 --loader:.less=empty",
+    "test:visual": "npm run test:visual:build && npx playwright test --config=playwright.config.ts",
+    "test:visual:update": "npm run test:visual:build && npx playwright test --config=playwright.config.ts --update-snapshots",
+    "validate:certification": "npm audit --audit-level=moderate && npm run eslint && npx tsc --noEmit && npm test && npm run test:visual && npm run package",
+    "check:capabilities": "node scripts/check-capabilities-conditions.mjs capabilities.json",
+    "pretest": "npm run check:capabilities"
+  },
+  "dependencies": {
+    "d3-axis": "3.0.0",
+    "d3-scale": "4.0.2",
+    "d3-selection": "3.0.0",
+    "powerbi-models": "2.0.1",
+    "powerbi-visuals-api": "5.11.1",
+    "powerbi-visuals-utils-formattingmodel": "7.1.0",
+    "powerbi-visuals-utils-formattingutils": "6.1.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "@types/d3-axis": "3.0.6",
+    "@types/d3-scale": "4.0.9",
+    "@types/d3-selection": "3.0.11",
+    "esbuild": "0.28.1",
+    "eslint": "10.8.0",
+    "eslint-plugin-powerbi-visuals": "1.1.1",
+    "happy-dom": "20.11.0",
+    "http-server": "14.1.1",
+    "less": "4.6.4",
+    "powerbi-visuals-tools": "7.2.0",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
+  },
+  "overrides": {
+    "@hono/node-server": "2.0.11",
+    "brace-expansion": "5.0.8",
+    "uuid": "11.1.1"
+  }
 }

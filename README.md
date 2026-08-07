@@ -4,29 +4,33 @@ A free, open-source Power BI custom visual for project timelines, milestones, pr
 
 ![Power BI](https://img.shields.io/badge/Power_BI-API_5.11.1-yellow)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![Version](https://img.shields.io/badge/Version-1.0.5.0-blue)
+![Version](https://img.shields.io/badge/Version-1.0.8.0-blue)
 
 ## Features
 
 - Date-scaled task bars with pinned axis and vertical scrolling
 - Visible diamond milestones when start and end dates are equal
-- Column-consistent progress overlays supporting 0-100 values or percentage-formatted fractions; blank and invalid progress remains unavailable
+- Explicit Auto, 0-1 fraction, and 0-100 progress interpretation with ambiguity warnings
 - Strict ISO date and datetime parsing, with hour/minute labels for sub-day tasks
 - Category colors, legend, labels, grid lines, title, and today line
 - Model-format-aware dates, progress values, and custom tooltip measures
 - Selection, multi-selection, cross-highlighting, and optional model-filter interaction
+- Optional unique Task ID is the stable selection/filter identity; blank or duplicate IDs safely fall back to Task identity
 - Data-point and background context menus
 - Keyboard operation, ARIA labels, focus indicators, and host-driven high-contrast colors
-- Safe handling for empty, partial, invalid, non-finite, reversed, and high-volume data
+- Data-quality warnings for invalid rows, corrected/excluded reversed dates, and duplicate stable task IDs
+- Virtualized row rendering and roving keyboard focus for high-volume portfolios
+- Deterministic chronological ordering (start, end, identity, name, source row); the visual does not expose a host sort menu
 
 ## Data roles
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | **Task** | Grouping | Yes | Task or work item name |
+| **Task ID** | Grouping | No | Optional unique stable identifier used for selection and model filtering. Blank or duplicate IDs fall back to Task identity; dependency support is not claimed |
 | **Start Date** | Measure | Yes | Task start date |
 | **End Date** | Measure | Yes | Task end date; equal dates render a milestone |
-| **Progress** | Measure | No | Completion as 0-100 or a percentage-formatted fraction; blank/invalid values are omitted |
+| **Progress** | Measure | No | Completion interpreted by the Chart Settings mode; blank/invalid values are omitted |
 | **Category** | Grouping | No | Group or phase used for color |
 | **Tooltips** | Measure | No | One or more additional model-formatted tooltip values |
 
@@ -34,7 +38,7 @@ A free, open-source Power BI custom visual for project timelines, milestones, pr
 
 | Card | Options |
 | --- | --- |
-| **Chart Settings** | Today line, grid lines, bar height, corner radius |
+| **Chart Settings** | Today line, grid lines, progress interpretation, reversed-date handling, bar height, corner radius |
 | **Title** | Visibility, text, size, color, alignment |
 | **Data Labels** | Visibility, size, progress value |
 | **Categories** | Visibility, size, color |
@@ -44,14 +48,28 @@ A free, open-source Power BI custom visual for project timelines, milestones, pr
 
 ## Development
 
-Requirements: Node.js 20.19 or newer and npm supported by `powerbi-visuals-tools` 7.2.0.
+Requirements: Node.js 20.19 or newer, npm supported by `powerbi-visuals-tools`
+7.2.0, and Microsoft Edge. Install the pinned Playwright browser engines once:
 
 ```powershell
 npm ci
+npx playwright install chromium webkit
 npm run validate:certification
 ```
 
 `npm run validate:certification` starts with `npm audit --audit-level=moderate` and stops on any nonzero result before running lint, type checking, unit/integration tests, production browser tests, and `pbiviz package --certification-audit`. Build output is intentionally excluded from source control; use the audited `.pbiviz` produced in `dist`.
+
+The browser gate runs pixel regressions in Chromium plus functional rendering,
+selection, pointer context-menu, and keyboard context-menu checks in Chromium,
+Microsoft Edge, and Playwright WebKit. Chromium and WebKit are reproducible engine
+proxies for Partner Center's Online Chrome and Online Safari categories; final
+validation still requires the real Power BI Online clients and macOS Safari.
+
+The categorical data reduction contract is capped at 5,000 rows. Synthetic tests exercise bounded virtualization with larger inputs, but that is not a full-model support claim. When Power BI supplies a reduced segment, the visual discloses it before rendering.
+
+Touch supports stationary tap selection, tooltips, and long-press context menus. Dragging remains available for scrolling and suppresses selection/tooltips. RTL locales receive logical document direction and localized labels; only the shipped en-US and de-DE resources are guaranteed, with safe key fallback for other locales.
+
+Virtualized viewport rendering is not a guarantee that PDF, PowerPoint, or image exports contain every row. Validate export output in Power BI Desktop; Desktop export behavior and mobile layout remain manual certification checks.
 
 ## Certification and privacy
 
@@ -66,7 +84,7 @@ This repository is the complete reviewable source for the package. The visual GU
 
 ## Testing a Marketplace update
 
-Power BI normally loads the latest AppSource version for a published visual. To validate a local update without changing its GUID, enable **Developer mode for this session** under **File > Options and settings > Options > Current file > Report settings**, import the audited `.pbiviz`, then save the PBIX with visual version 1.0.5.0.
+Power BI normally loads the latest AppSource version for a published visual. To validate a local update without changing its GUID, enable **Developer mode for this session** under **File > Options and settings > Options > Current file > Report settings**, import the audited `.pbiviz`, then save the PBIX with visual version 1.0.8.0.
 
 ## License
 

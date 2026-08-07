@@ -12,6 +12,8 @@ import IVisualHost = powerbi.extensibility.visual.IVisualHost;
 import HostSelectionId = powerbi.extensibility.ISelectionId;
 import SelectionId = powerbi.visuals.ISelectionId;
 
+const RESIZE_UPDATE_TYPE: powerbi.VisualUpdateType = 1 << 2;
+
 interface HostHarness {
     host: IVisualHost;
     renderEvents: string[];
@@ -22,6 +24,7 @@ interface HostHarness {
     tooltipShow: ReturnType<typeof vi.fn>;
     tooltipMove: ReturnType<typeof vi.fn>;
     tooltipHide: ReturnType<typeof vi.fn>;
+    displayWarningIcon: ReturnType<typeof vi.fn>;
     invokeSelectionCallback(selectionIds: HostSelectionId[]): void;
 }
 
@@ -45,6 +48,8 @@ function createMockHost(options: {
     foreground?: string;
     background?: string;
     foregroundSelected?: string;
+    locale?: string;
+    translations?: Record<string, string>;
 } = {}): HostHarness {
     const selected: SelectionId[] = [];
     let selectionCallback: (selectionIds: HostSelectionId[]) => void = () => undefined;
@@ -76,6 +81,7 @@ function createMockHost(options: {
     const tooltipShow = vi.fn();
     const tooltipMove = vi.fn();
     const tooltipHide = vi.fn();
+    const displayWarningIcon = vi.fn();
     const renderEvents: string[] = [];
     const color = (value: string): powerbi.IColorInfo => ({ value });
     const palette = {
@@ -108,7 +114,7 @@ function createMockHost(options: {
 
     const host = {
         instanceId: options.instanceId || "host-instance",
-        locale: "en-US",
+        locale: options.locale || "en-US",
         hostCapabilities: {
             allowInteractions: options.allowInteractions ?? true
         },
@@ -136,6 +142,10 @@ function createMockHost(options: {
             renderingFinished: () => renderEvents.push("finished"),
             renderingFailed: () => renderEvents.push("failed")
         },
+        createLocalizationManager: () => ({
+            getDisplayName: (key: string) => options.translations?.[key] ?? key
+        }),
+        displayWarningIcon,
         applyJsonFilter
     } as unknown as IVisualHost;
 
@@ -149,6 +159,7 @@ function createMockHost(options: {
         tooltipShow,
         tooltipMove,
         tooltipHide,
+        displayWarningIcon,
         invokeSelectionCallback: selectionIds => selectionCallback(selectionIds)
     };
 }
@@ -287,6 +298,191 @@ describe("Gantt Visual integration", () => {
         expect(dataPoints[2]?.getAttribute("aria-pressed")).toBe("false");
     });
 
+    it("uses roving focus and arrow keys across task rows", () => {
+        visual.update(makeUpdateOptions(sampleDataView()));
+        const dataPoints = element.querySelectorAll<SVGGraphicsElement>(".gantt-data-point");
+        expect(Array.from(dataPoints).map(point => point.getAttribute("tabindex")))
+            .toEqual(["0", "-1", "-1"]);
+
+        dataPoints[0]?.dispatchEvent(new KeyboardEvent("keydown", {
+            key: "ArrowDown",
+            bubbles: true
+        }));
+
+        expect(dataPoints[0]?.getAttribute("tabindex")).toBe("-1");
+        expect(dataPoints[1]?.getAttribute("tabindex")).toBe("0");
+    });
+
+    it("supports touch selection, tooltips, and long-press context menus", async () => {
+        vi.useFakeTimers();
+        try {
+            visual.update(makeUpdateOptions(sampleDataView()));
+            const firstDataPoint = element.querySelector<SVGGraphicsElement>(".gantt-data-point");
+            firstDataPoint?.dispatchEvent(new PointerEvent("pointerdown", {
+                pointerType: "touch",
+                clientX: 20,
+                clientY: 30,
+                bubbles: true
+            }));
+            firstDataPoint?.dispatchEvent(new PointerEvent("pointerup", {
+                pointerType: "touch",
+                clientX: 20,
+                clientY: 30,
+                bubbles: true
+            }));
+            await Promise.resolve();
+
+            expect(harness.select).toHaveBeenCalledOnce();
+            expect(harness.tooltipShow.mock.calls[0]?.[0]?.isTouchEvent).toBe(true);
+
+            firstDataPoint?.dispatchEvent(new PointerEvent("pointerdown", {
+                pointerType: "touch",
+                clientX: 40,
+                clientY: 50,
+                bubbles: true
+            }));
+            firstDataPoint?.dispatchEvent(new PointerEvent("pointermove", {
+                pointerType: "touch",
+                clientX: 80,
+                clientY: 50,
+                bubbles: true
+            }));
+            firstDataPoint?.dispatchEvent(new PointerEvent("pointerup", {
+                pointerType: "touch",
+                clientX: 80,
+                clientY: 50,
+                bubbles: true
+            }));
+            expect(harness.select).toHaveBeenCalledOnce();
+            expect(harness.tooltipShow).toHaveBeenCalledOnce();
+
+            firstDataPoint?.dispatchEvent(new PointerEvent("pointerdown", {
+                pointerType: "touch",
+                clientX: 100,
+                clientY: 120,
+                bubbles: true
+            }));
+            await vi.advanceTimersByTimeAsync(600);
+            expect(harness.showContextMenu).toHaveBeenCalledOnce();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("reports ambiguous progress and corrected dates through the host warning surface", () => {
+        visual.update(makeUpdateOptions(sampleDataView({
+            tasks: ["Ambiguous", "Reversed"],
+            startDates: ["2024-01-01", "2024-03-01"],
+            endDates: ["2024-02-01", "2024-02-01"],
+            progress: [0.5, 1],
+            categories: []
+        })));
+
+        const warning = harness.displayWarningIcon.mock.calls.at(-1);
+        expect(warning?.[0]).toBe("Review Gantt data quality");
+        expect(warning?.[1]).toContain("choose Fraction (0 to 1)");
+        expect(warning?.[1]).toContain("1 reversed date row(s)");
+    });
+
+    it("localizes new warning and accessibility strings through the host manager", () => {
+        const localizedHarness = createMockHost({
+            locale: "de-DE",
+            translations: {
+                Visual_Name: "Lokales Gantt",
+                Duration_Milestone: "Meilenstein",
+                Warning_DataQualityTitle: "Daten prüfen",
+                Warning_AmbiguousProgress: "Fortschritt ist mehrdeutig",
+                Aria_ChartTasks: "Gantt mit {0} {1}",
+                Chart_Task: "Aufgabe",
+                Chart_Tasks: "Aufgaben",
+                Aria_MilestoneOn: "Meilenstein am {0}",
+                Aria_TaskRange: "{0} bis {1}, {2}",
+                Aria_Progress: "Fortschritt {0}",
+                Aria_Category: "Kategorie {0}"
+            }
+        });
+        const localizedElement = document.createElement("div");
+        const localizedVisual = new Visual({
+            element: localizedElement,
+            host: localizedHarness.host
+        } as VisualConstructorOptions);
+
+        localizedVisual.update(makeUpdateOptions(sampleDataView({
+            progress: [0.5, 1, 0.25]
+        })));
+
+        expect(localizedElement.getAttribute("aria-label")).toBe("Lokales Gantt");
+        expect(localizedElement.querySelector("svg.ganttBody")?.getAttribute("aria-label"))
+            .toBe("Gantt mit 3 Aufgaben");
+        expect(localizedHarness.displayWarningIcon.mock.calls.at(-1)?.[0]).toBe("Daten prüfen");
+    });
+
+    it("sets logical document direction for RTL hosts", () => {
+        const rtlHarness = createMockHost({ locale: "ar-SA" });
+        const rtlElement = document.createElement("div");
+        const rtlVisual = new Visual({
+            element: rtlElement,
+            host: rtlHarness.host
+        } as VisualConstructorOptions);
+        rtlVisual.update(makeUpdateOptions(sampleDataView()));
+        expect(rtlElement.dir).toBe("rtl");
+    });
+
+    it("handles active resize without rebuilding data-point nodes", () => {
+        visual.update(makeUpdateOptions(sampleDataView()));
+        const initialX = Number(element.querySelector(".gantt-data-point")?.getAttribute("x"));
+        const resize = makeUpdateOptions(sampleDataView(), 700, 320);
+        resize.type = RESIZE_UPDATE_TYPE;
+
+        visual.update(resize);
+
+        expect(Number(element.querySelector(".gantt-data-point")?.getAttribute("x"))).not.toBe(initialX);
+        expect(element.querySelector("svg.ganttBody")?.getAttribute("width")).toBe("700");
+        expect(harness.renderEvents).toEqual(["started", "finished", "started", "finished"]);
+    });
+
+    it.each([5_000, 20_000])(
+        "bounds live row nodes for %i-row portfolio data",
+        rowCount => {
+            const tasks = Array.from({ length: rowCount }, (_, index) => `Task ${index}`);
+            visual.update(makeUpdateOptions(buildMockDataView({
+                tasks,
+                taskIds: tasks.map((_, index) => `T-${index}`),
+                startDates: tasks.map(() => "2024-01-01"),
+                endDates: tasks.map(() => "2024-02-01"),
+                progress: tasks.map(() => 50)
+            }), 900, 500));
+
+            const liveRows = element.querySelectorAll(".gantt-data-point").length;
+            const bodySvg = element.querySelector<SVGSVGElement>("svg.ganttBody");
+            expect(liveRows).toBeGreaterThan(0);
+            expect(liveRows).toBeLessThanOrEqual(200);
+            expect(Number(bodySvg?.getAttribute("height"))).toBeGreaterThan(rowCount * 20);
+        },
+        20_000
+    );
+
+    it("keeps one keyboard tab stop in a manually scrolled virtual window", () => {
+        const tasks = Array.from({ length: 500 }, (_, index) => `Task ${index}`);
+        visual.update(makeUpdateOptions(buildMockDataView({
+            tasks,
+            startDates: tasks.map(() => "2024-01-01"),
+            endDates: tasks.map(() => "2024-02-01")
+        }), 900, 500));
+        const scrollBody = element.querySelector<HTMLElement>(".gantt-scroll-body");
+
+        if (scrollBody) {
+            scrollBody.scrollTop = 5_000;
+            scrollBody.dispatchEvent(new Event("scroll"));
+        }
+
+        const tabStops = element.querySelectorAll<SVGGraphicsElement>(
+            ".gantt-data-point[tabindex=\"0\"]"
+        );
+        expect(tabStops).toHaveLength(1);
+        expect(Number(tabStops[0]?.dataset.dpIndex)).toBeGreaterThan(0);
+    });
+
     it("honors hosts that disable visual interactions", () => {
         const staticHarness = createMockHost({ allowInteractions: false });
         const staticElement = document.createElement("div");
@@ -306,6 +502,24 @@ describe("Gantt Visual integration", () => {
         expect(dataPoint?.getAttribute("aria-pressed")).toBeNull();
         expect(staticHarness.select).not.toHaveBeenCalled();
         expect(staticHarness.showContextMenu).not.toHaveBeenCalled();
+    });
+
+    it("releases interaction state on destroy", () => {
+        visual.update(makeUpdateOptions(sampleDataView()));
+        const dataPoint = element.querySelector<SVGGraphicsElement>(".gantt-data-point");
+        visual.destroy();
+        dataPoint?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        harness.invokeSelectionCallback([]);
+        expect(harness.select).not.toHaveBeenCalled();
+        expect(harness.tooltipHide).toHaveBeenCalled();
+    });
+
+    it("discloses a reduced DataView segment before rendering", () => {
+        const dataView = sampleDataView();
+        dataView.metadata.segment = {};
+        visual.update(makeUpdateOptions(dataView));
+        expect(harness.displayWarningIcon.mock.calls.at(-1)?.[1])
+            .toContain("reduced data segment");
     });
 
     it("keeps context menus accessible when selection is disabled", () => {
@@ -446,6 +660,29 @@ describe("Gantt Visual integration", () => {
         expect(harness.applyJsonFilter.mock.calls[1]?.[3]).toBe(1);
     });
 
+    it("uses a unique Task ID as the model filter identity", async () => {
+        visual.update(makeUpdateOptions(sampleDataView({
+            tasks: ["Duplicate", "Duplicate"],
+            taskIds: ["T-2", "T-1"],
+            startDates: ["2024-02-01", "2024-01-01"],
+            endDates: ["2024-02-28", "2024-01-31"],
+            objects: {
+                interaction: { crossFilterMode: "filter" }
+            } as powerbi.DataViewObjects
+        })));
+
+        element.querySelector<SVGGraphicsElement>(".gantt-data-point")
+            ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        await Promise.resolve();
+
+        const filter = harness.applyJsonFilter.mock.calls[0]?.[0] as {
+            target: { table: string; column: string };
+            values: string[];
+        };
+        expect(filter.target).toEqual({ table: "Table", column: "TaskId" });
+        expect(filter.values).toEqual(["T-1"]);
+    });
+
     it("restores and clears a persisted model filter", async () => {
         const updateOptions = makeUpdateOptions(sampleDataView({
             objects: {
@@ -474,6 +711,28 @@ describe("Gantt Visual integration", () => {
             "filter",
             1
         );
+    });
+
+    it("does not carry a stale filter across a replaced task field", () => {
+        const first = makeUpdateOptions(sampleDataView({
+            taskQueryName: "Table.Task",
+            objects: { interaction: { crossFilterMode: "filter" } } as powerbi.DataViewObjects
+        }));
+        first.jsonFilters = [{
+            target: { table: "Table", column: "Task" },
+            operator: "In",
+            values: ["Develop"]
+        } as unknown as powerbi.IFilter];
+        visual.update(first);
+        expect(element.querySelectorAll(".gantt-data-point[aria-pressed=\"true\"]")).toHaveLength(1);
+
+        const replaced = makeUpdateOptions(sampleDataView({
+            taskQueryName: "OtherTable.OtherTask",
+            objects: { interaction: { crossFilterMode: "filter" } } as powerbi.DataViewObjects
+        }));
+        replaced.jsonFilters = first.jsonFilters;
+        visual.update(replaced);
+        expect(element.querySelectorAll(".gantt-data-point[aria-pressed=\"true\"]")).toHaveLength(0);
     });
 
     it("clears a persisted filter from an empty-result landing page", () => {

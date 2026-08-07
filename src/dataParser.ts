@@ -13,6 +13,32 @@ import DataViewCategoryColumn = powerbi.DataViewCategoryColumn;
 import DataViewValueColumn = powerbi.DataViewValueColumn;
 
 export type TaskFilterValue = string | number | boolean;
+export type ProgressInterpretation = "auto" | "fraction" | "percent";
+export type ReversedDateHandling = "correct" | "exclude";
+export type TaskIdentityMode = "task" | "taskId";
+export const CATEGORICAL_ROW_LIMIT = 5000;
+
+export interface ParseOptions {
+    progressInterpretation?: ProgressInterpretation;
+    reversedDateHandling?: ReversedDateHandling;
+    milestoneLabel?: string;
+}
+
+export interface ParseDiagnostics {
+    ambiguousProgress: boolean;
+    correctedReversedDates: number;
+    excludedReversedDates: number;
+    invalidRows: number;
+    duplicateTaskIds: number;
+    blankTaskIds: number;
+    hasDataSegment: boolean;
+    atCategoricalRowLimit: boolean;
+}
+
+export interface ParseResult {
+    data: ParsedData | null;
+    diagnostics: ParseDiagnostics;
+}
 
 export interface TooltipField {
     displayName: string;
@@ -20,8 +46,10 @@ export interface TooltipField {
 }
 
 export interface GanttTask {
+    taskId: string | null;
     name: string;
     filterValue: TaskFilterValue;
+    identityKey: string;
     startDate: Date;
     endDate: Date;
     startDateLabel: string;
@@ -44,16 +72,41 @@ export interface ParsedData {
     maxDate: Date;
     hasHighlights: boolean;
     taskQueryName: string | undefined;
+    taskIdentityMode: TaskIdentityMode;
+    taskIdentityQueryName: string | undefined;
 }
 
-export function parseDataView(dataView: DataView | null | undefined, locale: string = "en-US"): ParsedData | null {
+export function parseDataView(
+    dataView: DataView | null | undefined,
+    locale: string = "en-US",
+    options: ParseOptions = {}
+): ParsedData | null {
+    return parseDataViewWithDiagnostics(dataView, locale, options).data;
+}
+
+export function parseDataViewWithDiagnostics(
+    dataView: DataView | null | undefined,
+    locale: string = "en-US",
+    options: ParseOptions = {}
+): ParseResult {
+    const diagnostics: ParseDiagnostics = {
+        ambiguousProgress: false,
+        correctedReversedDates: 0,
+        excludedReversedDates: 0,
+        invalidRows: 0,
+        duplicateTaskIds: 0,
+        blankTaskIds: 0,
+        hasDataSegment: dataView?.metadata?.segment !== undefined,
+        atCategoricalRowLimit: false
+    };
     const categorical = dataView?.categorical;
     if (!categorical?.categories?.length || !categorical.values) {
-        return null;
+        return { data: null, diagnostics };
     }
 
     let taskColumn: DataViewCategoryColumn | undefined;
     let categoryColumn: DataViewCategoryColumn | undefined;
+    let taskIdColumn: DataViewCategoryColumn | undefined;
 
     for (const column of categorical.categories) {
         if (column.source.roles?.task) {
@@ -62,10 +115,13 @@ export function parseDataView(dataView: DataView | null | undefined, locale: str
         if (column.source.roles?.category) {
             categoryColumn = column;
         }
+        if (column.source.roles?.taskId) {
+            taskIdColumn = column;
+        }
     }
 
     if (!taskColumn?.values.length) {
-        return null;
+        return { data: null, diagnostics };
     }
 
     let startDateColumn: DataViewValueColumn | undefined;
@@ -89,38 +145,68 @@ export function parseDataView(dataView: DataView | null | undefined, locale: str
     }
 
     if (!startDateColumn?.values.length || !endDateColumn?.values.length) {
-        return null;
+        return { data: null, diagnostics };
     }
 
     const highlightColumns = [startDateColumn, endDateColumn, progressColumn]
         .filter((column): column is DataViewValueColumn => column !== undefined);
     const hasHighlights = highlightColumns.some(column => column.highlights !== undefined);
-    const progressScale = progressColumn?.source.format?.includes("%") ? 100 : 1;
+    const progressInterpretation = options.progressInterpretation ?? "auto";
+    const progressScale = getProgressScale(progressColumn, progressInterpretation);
+    diagnostics.ambiguousProgress = progressInterpretation === "auto"
+        && isProgressScaleAmbiguous(progressColumn);
+    const reversedDateHandling = options.reversedDateHandling ?? "correct";
 
-    const tasks: GanttTask[] = [];
+    const tasks: Array<GanttTask & {
+        taskIdFilterValue: TaskFilterValue | null;
+        taskIdentityKey: string | null;
+    }> = [];
     const categories = new Set<string>();
+    const taskIds = new Set<string>();
+    if (taskIdColumn) {
+        for (const rawTaskId of taskIdColumn.values) {
+            const taskIdKey = canonicalTaskId(rawTaskId);
+            if (!taskIdKey) {
+                diagnostics.blankTaskIds++;
+            } else if (taskIds.has(taskIdKey)) {
+                diagnostics.duplicateTaskIds++;
+            } else {
+                taskIds.add(taskIdKey);
+            }
+        }
+    }
     let minDate: Date | undefined;
     let maxDate: Date | undefined;
 
     for (let rowIndex = 0; rowIndex < taskColumn.values.length; rowIndex++) {
         const rawTask = taskColumn.values[rowIndex];
-        const filterValue = toFilterValue(rawTask);
-        if (filterValue === null || rawTask === null || rawTask === undefined) {
+        const taskFilterValue = toFilterValue(rawTask);
+        if (taskFilterValue === null || rawTask === null || rawTask === undefined) {
+            diagnostics.invalidRows++;
             continue;
         }
 
         const taskName = truncateText(formatValue(rawTask, taskColumn.source.format, locale).trim());
         if (!taskName) {
+            diagnostics.invalidRows++;
             continue;
         }
 
         const parsedStart = parseDate(startDateColumn.values[rowIndex]);
         const parsedEnd = parseDate(endDateColumn.values[rowIndex]);
         if (!parsedStart || !parsedEnd) {
+            diagnostics.invalidRows++;
             continue;
         }
 
         const datesAreReversed = parsedStart.getTime() > parsedEnd.getTime();
+        if (datesAreReversed && reversedDateHandling === "exclude") {
+            diagnostics.excludedReversedDates++;
+            continue;
+        }
+        if (datesAreReversed) {
+            diagnostics.correctedReversedDates++;
+        }
         const actualStart = datesAreReversed ? parsedEnd : parsedStart;
         const actualEnd = datesAreReversed ? parsedStart : parsedEnd;
         const startFormat = datesAreReversed ? endDateColumn.source.format : startDateColumn.source.format;
@@ -131,6 +217,10 @@ export function parseDataView(dataView: DataView | null | undefined, locale: str
             progressScale
         );
         const category = formatCategory(categoryColumn, rowIndex, locale);
+        const rawTaskId = taskIdColumn?.values[rowIndex];
+        const taskId = formatTaskId(rawTaskId, taskIdColumn, locale);
+        const taskIdKey = canonicalTaskId(rawTaskId);
+        const taskIdFilterValue = toFilterValue(rawTaskId);
         if (category) {
             categories.add(category);
         }
@@ -153,14 +243,18 @@ export function parseDataView(dataView: DataView | null | undefined, locale: str
         );
 
         tasks.push({
+            taskId,
             name: taskName,
-            filterValue,
+            filterValue: taskFilterValue,
+            identityKey: `task:${canonicalFilterValue(taskFilterValue)}`,
             startDate: actualStart,
             endDate: actualEnd,
             startDateLabel: formatDate(actualStart, startFormat, locale),
             endDateLabel: formatDate(actualEnd, endFormat, locale),
             durationDays,
-            durationLabel: formatDuration(durationDays, locale),
+            durationLabel: durationDays === 0
+                ? options.milestoneLabel ?? "Milestone"
+                : formatDuration(durationDays, locale),
             isMilestone: actualStart.getTime() === actualEnd.getTime(),
             progress,
             progressLabel: progress === null
@@ -169,7 +263,9 @@ export function parseDataView(dataView: DataView | null | undefined, locale: str
             category,
             tooltipFields,
             rowIndex,
-            highlighted
+            highlighted,
+            taskIdFilterValue,
+            taskIdentityKey: taskIdKey
         });
 
         if (!minDate || actualStart.getTime() < minDate.getTime()) {
@@ -181,17 +277,88 @@ export function parseDataView(dataView: DataView | null | undefined, locale: str
     }
 
     if (tasks.length === 0 || !minDate || !maxDate) {
+        return { data: null, diagnostics };
+    }
+
+    const useTaskIds = taskIdColumn !== undefined
+        && diagnostics.blankTaskIds === 0
+        && diagnostics.duplicateTaskIds === 0
+        && tasks.every(task => task.taskIdFilterValue !== null && task.taskIdentityKey !== null);
+    const identityMode: TaskIdentityMode = useTaskIds ? "taskId" : "task";
+    for (const task of tasks) {
+        const identityValue = useTaskIds ? task.taskIdFilterValue : task.filterValue;
+        const identityKey = useTaskIds
+            ? `taskId:${task.taskIdentityKey}`
+            : `task:${canonicalFilterValue(task.filterValue)}`;
+        task.filterValue = identityValue as TaskFilterValue;
+        task.identityKey = identityKey;
+    }
+    tasks.sort(compareTasks);
+    diagnostics.atCategoricalRowLimit = taskColumn.values.length >= CATEGORICAL_ROW_LIMIT;
+
+    return {
+        data: {
+            tasks,
+            categories: Array.from(categories),
+            minDate,
+            maxDate,
+            hasHighlights,
+            taskQueryName: taskColumn.source.queryName,
+            taskIdentityMode: identityMode,
+            taskIdentityQueryName: (useTaskIds ? taskIdColumn?.source.queryName : taskColumn.source.queryName)
+        },
+        diagnostics
+    };
+}
+
+function compareTasks(left: GanttTask, right: GanttTask): number {
+    return left.startDate.getTime() - right.startDate.getTime()
+        || left.endDate.getTime() - right.endDate.getTime()
+        || compareStrings(left.identityKey, right.identityKey)
+        || compareStrings(left.name, right.name)
+        || left.rowIndex - right.rowIndex;
+}
+
+function canonicalFilterValue(value: TaskFilterValue): string {
+    return `${typeof value}:${String(value)}`;
+}
+
+function compareStrings(left: string, right: string): number {
+    return left === right ? 0 : left < right ? -1 : 1;
+}
+
+function formatTaskId(
+    value: powerbi.PrimitiveValue | undefined,
+    taskIdColumn: DataViewCategoryColumn | undefined,
+    locale: string
+): string | null {
+    if (!taskIdColumn) {
         return null;
     }
 
-    return {
-        tasks,
-        categories: Array.from(categories),
-        minDate,
-        maxDate,
-        hasHighlights,
-        taskQueryName: taskColumn.source.queryName
-    };
+    if (value === null || value === undefined || value === "") {
+        return null;
+    }
+
+    const taskId = truncateText(formatValue(value, taskIdColumn.source.format, locale).trim());
+    return taskId || null;
+}
+
+function canonicalTaskId(value: powerbi.PrimitiveValue | undefined): string | null {
+    if (typeof value === "string") {
+        const normalized = value.trim();
+        return normalized ? `string:${normalized}` : null;
+    }
+    if (typeof value === "number") {
+        return Number.isFinite(value) ? `number:${value}` : null;
+    }
+    if (typeof value === "boolean") {
+        return `boolean:${value}`;
+    }
+    if (value instanceof Date && Number.isFinite(value.getTime())) {
+        return `date:${value.toISOString()}`;
+    }
+    return null;
 }
 
 function formatCategory(
@@ -209,6 +376,48 @@ function formatCategory(
     }
 
     return truncateText(formatValue(value, categoryColumn.source.format, locale).trim());
+}
+
+function getProgressScale(
+    progressColumn: DataViewValueColumn | undefined,
+    interpretation: ProgressInterpretation
+): number {
+    if (interpretation === "fraction") {
+        return 100;
+    }
+    if (interpretation === "percent") {
+        return 1;
+    }
+    return progressColumn?.source.format?.includes("%") ? 100 : 1;
+}
+
+function isProgressScaleAmbiguous(progressColumn: DataViewValueColumn | undefined): boolean {
+    if (!progressColumn || progressColumn.source.format?.includes("%")) {
+        return false;
+    }
+
+    const numericValues = progressColumn.values
+        .map(toFiniteProgressNumber)
+        .filter((value): value is number => value !== null);
+    return numericValues.length > 0
+        && numericValues.some(value => value > 0)
+        && numericValues.every(value => value >= 0 && value <= 1);
+}
+
+function toFiniteProgressNumber(value: powerbi.PrimitiveValue | undefined): number | null {
+    if (typeof value === "number") {
+        return Number.isFinite(value) ? value : null;
+    }
+    if (typeof value !== "string") {
+        return null;
+    }
+
+    const text = value.trim();
+    if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(text)) {
+        return null;
+    }
+    const numericValue = Number(text);
+    return Number.isFinite(numericValue) ? numericValue : null;
 }
 
 function normalizeProgress(value: powerbi.PrimitiveValue | undefined, scale: number): number | null {

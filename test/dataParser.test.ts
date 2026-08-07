@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseDataView } from "../src/dataParser";
+import { parseDataView, parseDataViewWithDiagnostics } from "../src/dataParser";
 import { buildEmptyDataView, buildMockDataView } from "./helpers/mockDataView";
 
 describe("parseDataView", () => {
@@ -16,6 +16,56 @@ describe("parseDataView", () => {
         expect(result?.tasks[0]?.filterValue).toBe("Task A");
     });
 
+    it("supports explicit fraction and percent progress interpretation", () => {
+        const dataView = buildMockDataView({
+            tasks: ["Fraction", "Percent"],
+            startDates: ["2024-01-01", "2024-01-01"],
+            endDates: ["2024-02-01", "2024-02-01"],
+            progress: [0.625, 1]
+        });
+        const fraction = parseDataView(dataView, "en-US", {
+            progressInterpretation: "fraction"
+        });
+        const percent = parseDataView(dataView, "en-US", {
+            progressInterpretation: "percent"
+        });
+
+        expect(fraction?.tasks.map(task => task.progress)).toEqual([62.5, 100]);
+        expect(percent?.tasks.map(task => task.progress)).toEqual([0.625, 1]);
+    });
+
+    it("warns when Auto cannot distinguish fractions from percent points", () => {
+        const result = parseDataViewWithDiagnostics(buildMockDataView({
+            tasks: ["Quarter", "Complete"],
+            startDates: ["2024-01-01", "2024-01-01"],
+            endDates: ["2024-02-01", "2024-02-01"],
+            progress: [0.25, 1]
+        }));
+
+        expect(result.data?.tasks.map(task => task.progress)).toEqual([1, 0.25]);
+        expect(result.diagnostics.ambiguousProgress).toBe(true);
+    });
+
+    it("does not warn for explicit progress modes or mixed percent-point values", () => {
+        const fractional = buildMockDataView({
+            tasks: ["Quarter"],
+            startDates: ["2024-01-01"],
+            endDates: ["2024-02-01"],
+            progress: [0.25]
+        });
+        const mixed = buildMockDataView({
+            tasks: ["Quarter", "Half"],
+            startDates: ["2024-01-01", "2024-01-01"],
+            endDates: ["2024-02-01", "2024-02-01"],
+            progress: [0.25, 50]
+        });
+
+        expect(parseDataViewWithDiagnostics(fractional, "en-US", {
+            progressInterpretation: "fraction"
+        }).diagnostics.ambiguousProgress).toBe(false);
+        expect(parseDataViewWithDiagnostics(mixed).diagnostics.ambiguousProgress).toBe(false);
+    });
+
     it("parses date-only strings as local calendar dates", () => {
         const result = parseDataView(buildMockDataView({
             tasks: ["Task"],
@@ -27,6 +77,79 @@ describe("parseDataView", () => {
         expect(result?.tasks[0]?.startDate.getMonth()).toBe(5);
         expect(result?.tasks[0]?.startDate.getDate()).toBe(15);
         expect(result?.tasks[0]?.startDate.getHours()).toBe(0);
+    });
+
+    it("reports corrected reversed dates and can exclude them explicitly", () => {
+        const dataView = buildMockDataView({
+            tasks: ["Reversed", "Valid"],
+            startDates: ["2024-03-01", "2024-01-01"],
+            endDates: ["2024-02-01", "2024-01-31"]
+        });
+        const corrected = parseDataViewWithDiagnostics(dataView);
+        const excluded = parseDataViewWithDiagnostics(dataView, "en-US", {
+            reversedDateHandling: "exclude"
+        });
+
+        expect(corrected.data?.tasks.map(task => task.name)).toEqual(["Valid", "Reversed"]);
+        expect(corrected.diagnostics.correctedReversedDates).toBe(1);
+        expect(excluded.data?.tasks.map(task => task.name)).toEqual(["Valid"]);
+        expect(excluded.diagnostics.excludedReversedDates).toBe(1);
+    });
+
+    it("captures stable task IDs and diagnoses duplicates", () => {
+        const result = parseDataViewWithDiagnostics(buildMockDataView({
+            tasks: ["Design", "Build", "Test"],
+            taskIds: ["A", "B", "A"],
+            startDates: ["2024-01-01", "2024-02-01", "2024-03-01"],
+            endDates: ["2024-01-31", "2024-02-28", "2024-03-31"]
+        }));
+
+        expect(result.data?.tasks.map(task => task.taskId)).toEqual(["A", "B", "A"]);
+        expect(result.diagnostics.duplicateTaskIds).toBe(1);
+        expect(result.data?.taskIdentityMode).toBe("task");
+        expect(result.data?.tasks.map(task => task.filterValue)).toEqual(["Design", "Build", "Test"]);
+    });
+
+    it("uses unique Task IDs for duplicate names and keeps the identity with the row", () => {
+        const result = parseDataViewWithDiagnostics(buildMockDataView({
+            tasks: ["Same", "Same"],
+            taskIds: ["A-2", "A-1"],
+            startDates: ["2024-02-01", "2024-01-01"],
+            endDates: ["2024-02-28", "2024-01-31"]
+        }));
+
+        expect(result.data?.taskIdentityMode).toBe("taskId");
+        expect(result.data?.tasks.map(task => task.filterValue)).toEqual(["A-1", "A-2"]);
+        expect(result.data?.tasks.map(task => task.identityKey)).toEqual([
+            "taskId:string:A-1",
+            "taskId:string:A-2"
+        ]);
+    });
+
+    it("falls back to Task identity when an optional ID is blank", () => {
+        const result = parseDataViewWithDiagnostics(buildMockDataView({
+            tasks: ["A", "B"],
+            taskIds: ["", "B-2"],
+            startDates: ["2024-01-01", "2024-02-01"],
+            endDates: ["2024-01-31", "2024-02-28"]
+        }));
+
+        expect(result.diagnostics.blankTaskIds).toBe(1);
+        expect(result.data?.taskIdentityMode).toBe("task");
+        expect(result.data?.tasks.map(task => task.filterValue)).toEqual(["A", "B"]);
+    });
+
+    it("validates task ID uniqueness from canonical values rather than display formatting", () => {
+        const result = parseDataViewWithDiagnostics(buildMockDataView({
+            tasks: ["Design", "Build"],
+            taskIds: [1.1, 1.2],
+            taskIdFormat: "0",
+            startDates: ["2024-01-01", "2024-02-01"],
+            endDates: ["2024-01-31", "2024-02-28"]
+        }));
+
+        expect(result.data?.tasks.map(task => task.taskId)).toEqual(["1", "1"]);
+        expect(result.diagnostics.duplicateTaskIds).toBe(0);
     });
 
     it("parses finite numeric timestamps and Date objects", () => {
@@ -76,7 +199,7 @@ describe("parseDataView", () => {
             progress: [-20, 50, 150, Number.POSITIVE_INFINITY]
         }));
 
-        expect(result?.tasks.map(task => task.progress)).toEqual([0, 50, 100, null]);
+        expect(result?.tasks.map(task => task.progress)).toEqual([100, null, 0, 50]);
     });
 
     it("uses one percentage scale for the entire formatted column", () => {
@@ -88,9 +211,9 @@ describe("parseDataView", () => {
             formats: { progress: "0.0%" }
         }), "en-US");
 
-        expect(result?.tasks.map(task => task.progress)).toEqual([62.5, 100, 100, 100]);
-        expect(result?.tasks[0]?.progressLabel).toBe("62.5%");
-        expect(result?.tasks[1]?.progressLabel).toBe("100.0%");
+        expect(result?.tasks.map(task => task.progress)).toEqual([100, 62.5, 100, 100]);
+        expect(result?.tasks[1]?.progressLabel).toBe("62.5%");
+        expect(result?.tasks[0]?.progressLabel).toBe("100.0%");
         expect(result?.tasks[2]?.progressLabel).toBe("100.0%");
     });
 
@@ -122,7 +245,7 @@ describe("parseDataView", () => {
         }));
 
         expect(result?.tasks.map(task => task.progress))
-            .toEqual([null, null, null, null, 50, 100]);
+            .toEqual([null, 100, null, 50, null, null]);
     });
 
     it("skips rows with blank tasks or missing and invalid dates", () => {
@@ -204,7 +327,7 @@ describe("parseDataView", () => {
         }));
 
         expect(result?.tasks.map(task => task.durationLabel))
-            .toEqual(["6 hours", "30 minutes", "< 1 minute"]);
+            .toEqual(["< 1 minute", "30 minutes", "6 hours"]);
     });
 
     it("deduplicates formatted category labels", () => {
