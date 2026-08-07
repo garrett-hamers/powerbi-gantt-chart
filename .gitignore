@@ -1,6 +1,7 @@
 node_modules/
 .tmp/
 dist/
+sample/out/
 test-results/
 playwright-report/
 .playwright-mcp/

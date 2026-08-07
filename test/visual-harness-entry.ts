@@ -116,6 +116,7 @@ function renderVisual(): void {
 
 function createMockHost(highContrast: "dark" | "white" | null): IVisualHost {
     const selected: ISelectionId[] = [];
+    let contextMenuCount = 0;
     let selectionCallback: (selectionIds: powerbi.extensibility.ISelectionId[]) => void =
         () => undefined;
     const selectionManager = {
@@ -147,7 +148,11 @@ function createMockHost(highContrast: "dark" | "white" | null): IVisualHost {
             selectionCallback([]);
             return Promise.resolve({});
         },
-        showContextMenu: () => Promise.resolve({}),
+        showContextMenu: () => {
+            contextMenuCount += 1;
+            document.body.dataset.contextMenuCount = String(contextMenuCount);
+            return Promise.resolve({});
+        },
         getSelectionIds: () => [...selected],
         hasSelection: () => selected.length > 0,
         registerOnSelectCallback: (
